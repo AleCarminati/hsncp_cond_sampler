@@ -1,11 +1,3 @@
-repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
-    hooks:
-    -   id: check-yaml 
-    -   id: end-of-file-fixer 
-    -   id: trailing-whitespace 
-    -   id: check-added-large-files
 -   id: julia-format
     name: Format Julia code
     description: Run `JuliaFormatter.jl` against Julia source files.
