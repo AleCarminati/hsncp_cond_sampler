@@ -9,5 +9,11 @@ n = rand(1:5, g)
 data = randn(sum(n))
 input = MCMCInput(data, n, g)
 
-output = hsncpmixturemodel_fit(input; iterations = 5, dimchildrenloc = 1)
+output = hsncpmixturemodel_fit(
+  input;
+  dimchildrenloc = 1,
+  iterations = 5,
+  burnin = 5,
+  thin = 1,
+)
 print(output)
