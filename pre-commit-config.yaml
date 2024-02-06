@@ -1,0 +1,26 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+    -   id: check-yaml 
+    -   id: end-of-file-fixer 
+    -   id: trailing-whitespace 
+    -   id: check-added-large-files
+-   id: julia-format
+    name: Format Julia code
+    description: Run `JuliaFormatter.jl` against Julia source files.
+    language: system
+    files: \.jl$
+    entry: |
+        julia -e '
+        using Pkg
+        using JuliaFormatter
+        format(ARGS)
+        out = Cmd(`git diff --name-only`) |> read |> String
+        if out== ""
+            exit(0)
+        else
+            @error "Some files have been formatted."
+            write(stdout, out)
+            exit(1)
+        end'
