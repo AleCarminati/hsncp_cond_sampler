@@ -28,19 +28,19 @@ end
 
 struct MCMCState
   # A vector containing, for each group, the auxiliary variable called u_l.
-  auxu::Array{Real}
+  auxu::Vector{Real}
   # A vector containing the within-group clustering labels for each observation.
-  wgroupcluslabels::Array{Array{Integer}}
+  wgroupcluslabels::Vector{Vector{Integer}}
   # A vector containing, for each group, the clustering labels for each
   # allocated atom of the children process.
-  childrenatomslabels::Array{Array{Integer}}
-  #= A matrix containing, for each group, the allocated atoms of the children
+  childrenatomslabels::Vector{Vector{Integer}}
+  #= A vector containing, for each group, the allocated atoms of the children
   		process. A atom is allocated if it is linked to at least one observation
   		through the clustering labels. =#
-  childrenallocatedatoms::Array{AtomsContainer}
+  childrenallocatedatoms::Vector{AtomsContainer}
   # A matrix containing, for each group, the non allocated atoms of the children
   # process.
-  childrennonallocatedatoms::Array{AtomsContainer}
+  childrennonallocatedatoms::Vector{AtomsContainer}
   #= A vector containing the allocated atoms of the mother process. A atom is
   		allocated if it is linked to at least one allocated atom of the children
   		processes throught the clustering labels. =#
