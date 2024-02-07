@@ -5,9 +5,8 @@ seed = 23478747247
 Random.seed!(seed)
 
 g = 3
-n = rand(1:5, g)
-data = randn(sum(n))
-input = MCMCInput(data, n, g)
+data = [randn(rand(1:5)) for l = 1:g]
+input = MCMCInput(data)
 
 output = hsncpmixturemodel_fit(
   input;

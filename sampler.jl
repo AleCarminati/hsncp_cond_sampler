@@ -2,32 +2,28 @@ using Random
 
 # Structure that contains the input of the MCMC.
 struct MCMCInput
-  # A vector containing all the observations.
-  data::Array{Real}
+  # A vector containing, for each group, the corresponding observations.
+  data::Vector{Vector{Real}}
   # A vector containing the number of observations in each group.
-  n::Array{Integer}
+  n::Vector{Integer}
   # The number of groups.
   g::Integer
 
-  function MCMCInput(data, n, g)
-    if (size(n)[1] != g)
-      throw(
-        DomainError(
-          "The number of groups and the size of the array containing" *
-          " the number of observations in each group are not coherent.",
-        ),
-      )
-    end
-    return new(data, n, g)
+  function MCMCInput(data)
+    return new(data, [size(data[l])[1] for l = 1:size(data)[1]], size(data)[1])
   end
 end
 
 struct AtomsContainer
-  jumps::Array{Real}
+  jumps::Vector{Real}
   locations::Array{Real}
   # Count how many atoms (or observations) are linked to this atoms through the
   # clustering labels.
-  counter::Array{Integer}
+  counter::Vector{Integer}
+
+  function AtomsContainer()
+    new(Real[], Real[], Integer[])
+  end
 end
 
 struct MCMCState
@@ -48,9 +44,9 @@ struct MCMCState
   #= A vector containing the allocated atoms of the mother process. A atom is
   		allocated if it is linked to at least one allocated atom of the children
   		processes throught the clustering labels. =#
-  motherallocatedatoms::Array{AtomsContainer}
+  motherallocatedatoms::AtomsContainer
   # A vector containing the non allocated atoms of the mother process.
-  mothernonallocatedatoms::Array{AtomsContainer}
+  mothernonallocatedatoms::AtomsContainer
 
   function MCMCState(g, n)
     new(
@@ -59,8 +55,8 @@ struct MCMCState
       fill(Integer[], g),
       AtomsContainer[],
       AtomsContainer[],
-      AtomsContainer[],
-      AtomsContainer[],
+      AtomsContainer(),
+      AtomsContainer(),
     )
   end
 end
