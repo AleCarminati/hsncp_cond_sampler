@@ -165,9 +165,10 @@ struct MCMCOutput
   # A matrix containing, for each iteration, the across-group clustering label
   # for each observation.
   agroupcluslabels::Array{Array{Integer}}
-  function MCMCOutput(iterations, g, n, dimchildrenloc)
+
+  function MCMCOutput(iterations, g, n, model::NormalMeanModel)
     new(
-      [zeros(iterations, n[l], dimchildrenloc) for l = 1:g],
+      [zeros(iterations, n[l], 1) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
     )
@@ -199,8 +200,8 @@ function updatemcmcoutput!(
 end
 
 function hsncpmixturemodel_fit(
-  input::MCMCInput;
-  dimchildrenloc = dimchildrenloc,
+  input::MCMCInput,
+  model::Model;
   iterations = iterations,
   burnin = burnin,
   thin = thin,
@@ -208,7 +209,7 @@ function hsncpmixturemodel_fit(
   state = MCMCState(input.g, input.n)
   initalizemcmcstate!(state)
 
-  output = MCMCOutput(iterations, input.g, input.n, dimchildrenloc)
+  output = MCMCOutput(iterations, input.g, input.n, model)
 
   for it = 1:(burnin+iterations*thin)
     # TODO: update MCMC state
