@@ -58,7 +58,7 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
 
   means =
     sums ./ (model.kernelsd) .^ (2 .* state.motherallocatedatoms.counter) .*
-    standevs
+    standevs .^ 2
 
   normals = Normal.(means, standevs)
 
@@ -88,8 +88,112 @@ function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
     size(state.mothernonallocatedatoms.jumps)[1],
   )
 
-  state.mothernonallocatedatoms.locations =
+  state.mothernonallocatedatoms.counter =
     zeros(size(state.mothernonallocatedatoms.jumps)[1])
+end
+
+function updatechildrenprocesses!(
+  input::MCMCInput,
+  state::MCMCState,
+  model::Model,
+)
+  g = size(state.childrenallocatedatoms)[1]
+  for l = 1:g
+    # Update the allocated atoms of the mother process.
+    updatechildprocessalloc!(input, state, model, l)
+    # Update the non allocated atoms of the mother process.
+    updatechildprocessnonalloc!(state, model, l)
+  end
+end
+
+function updatechildprocessalloc!(
+  input::MCMCInput,
+  state::MCMCState,
+  model::NormalMeanModel,
+  l,
+)
+  g = size(state.auxu)[1]
+  nallocatoms = size(state.childrenallocatedatoms[l].jumps)[1]
+
+  # First, sample the jumps.
+
+  shapes = model.childenjumpshape .+ state.childrenallocatedatoms[l].counter
+  scales = fill(1 / (model.childenjumprate + state.auxu[l]))
+
+  gammas = Gamma.(shapes, scales)
+
+  state.childrenallocatedatoms[l].jumps[:] = rand.(gammas, 1)
+
+  # Then, sample the locations.
+
+  standevs =
+    sqrt.(
+      1.0 / (
+        1 / model.kernelsd^2 .+
+        state.childrenallocatedatoms[l].counter ./ model.mixturecompsd^2
+      )
+    )
+
+  # For each allocated atom of the child process, compute the sum of the
+  # observations associated with it.
+  sums = map(
+    x -> transpose(input.data[l]) * (state.wgroupcluslabels[l] .== x),
+    Vector(1:nallocatoms),
+  )
+
+  means =
+    standevs .^ 2 .* (
+      state.motherallocatedatoms.locations[state.childrenatomslabels[l]] ./
+      model.kernelsd^2 .+ sums ./ model.mixturecompsd^2
+    )
+
+  normals = Normal.(means, standevs)
+
+  state.childrenallocatedatoms[l].locations[:] = rand.(normals, 1)
+end
+
+function updatechildprocessnonalloc!(
+  state::MCMCState,
+  model::NormalMeanModel,
+  l,
+)
+  new_rate = model.childenjumprate + state.auxu[l]
+
+  coef = (model.childenjumprate / new_rate)^model.childrenjumpshape
+
+  f =
+    x ->
+      coef * gamma(model.childrenjumpshape, new_rate * x) /
+      gamma(model.childrenjumpshape)
+
+  state.childrennonallocatedatoms[l].jumps = fergusonklass(f, 0.1)
+
+  # For each non allocated atom of the children process, sample which atom of
+  # the mother process it is associated with, using the jumps of the mother
+  # process as weights.
+  motheratomsjumps =
+    hcat(state.motherallocatedatoms.jumps, state.mothernonallocatedatoms.jumps)
+  weights = motheratomsjumps ./ sum(motheratomsjumps)
+  associations = rand(
+    Categorical(weights),
+    size(state.childrennonallocatedatoms[l].jumps)[1],
+  )
+  # Then, set up the distribution of the children process atoms based on the
+  # Gaussian kernels centered in the associated atom of the mother process.
+  motheratomslocations = hcat(
+    state.motherallocatedatoms.locations,
+    state.mothernonallocatedatoms.locations,
+  )
+  normals = Normal(
+    motheratomslocations[associations],
+    fill(model.kernelsd, size(state.childrennonallocatedatoms[l].jumps)[1]),
+  )
+  # Eventually, sample the locations, using the distributions created in the
+  # last lines.
+  state.childrennonallocatedatoms.locations = rand.(normals, 1)
+
+  state.childrennonallocatedatoms.counter =
+    zeros(size(state.childrennonallocatedatoms[l].jumps)[1])
 end
 
 function updateauxu!(state::MCMCState, input::MCMCInput)
@@ -122,6 +226,8 @@ function hsncpmixturemodel_fit(
 
   for it = 1:(burnin+iterations*thin)
     updatemotherprocess!(state, model)
+
+    updatechildrenprocesses!(input, state, model)
 
     # TODO: update MCMC state
 
