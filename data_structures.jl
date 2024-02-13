@@ -44,25 +44,25 @@ function push!(
   push!(atoms.counter, counter)
 end
 
-struct MCMCState
+mutable struct MCMCState
   # A vector containing, for each group, the auxiliary variable called u_l.
-  auxu::Vector{Real}
+  const auxu::Vector{Real}
   # A vector containing the within-group clustering labels for each observation.
-  wgroupcluslabels::Vector{Vector{Integer}}
+  const wgroupcluslabels::Vector{Vector{Integer}}
   # A vector containing, for each group, the clustering labels for each
   # allocated atom of the children process.
-  childrenatomslabels::Vector{Vector{Integer}}
+  const childrenatomslabels::Vector{Vector{Integer}}
   #= A vector containing, for each group, the allocated atoms of the children
   		process. A atom is allocated if it is linked to at least one observation
   		through the clustering labels. =#
-  childrenallocatedatoms::Vector{AtomsContainer}
+  const childrenallocatedatoms::Vector{AtomsContainer}
   # A matrix containing, for each group, the non allocated atoms of the children
   # process.
   childrennonallocatedatoms::Vector{AtomsContainer}
   #= A vector containing the allocated atoms of the mother process. A atom is
   		allocated if it is linked to at least one allocated atom of the children
   		processes throught the clustering labels. =#
-  motherallocatedatoms::AtomsContainer
+  const motherallocatedatoms::AtomsContainer
   # A vector containing the non allocated atoms of the mother process.
   mothernonallocatedatoms::AtomsContainer
 

@@ -12,19 +12,23 @@ function fergusonklass(func, epsilon)
   lastauxvar = 0
 
   while true
-    auxvar = lastauxvar + rand(expdist, 1)
+    auxvar = lastauxvar + rand(expdist)
+
+    if lastauxvar != 0
+      #= We know that the jumps are positive and that the Ferguson-Klass
+       algorithm generates them in decreasing order, therefore we know that the
+       new jump will be between 0 and the last jump. =#
+      jump = Roots.find_zero(
+        x -> func(x) - auxvar,
+        (0, output[end]),
+        Roots.Bisection(),
+      )
+    else
+      jump = Roots.find_zero(x -> func(x) - auxvar, 0)
+    end
+
+    push!(output, jump)
     lastauxvar = auxvar
-
-    #= We know that the jumps are positive and that the Ferguson-Klass algorithm
-    generates them in decreasing order, therefore we know that the new
-    jump will be between 0 and the last jump. =#
-    jump = Roots.find_zero(
-      x -> func(x) - auxvar,
-      (0, output[end]),
-      Roots.Bisection(),
-    )
-
-    output[end] = jump
 
     # If the last sampled jump is lower or equal than epsilon, stop the
     # algorithm.
@@ -32,4 +36,6 @@ function fergusonklass(func, epsilon)
       break
     end
   end
+
+  return output
 end
