@@ -1,7 +1,7 @@
 # This file contains the functions to run the conditional sampler for the
 # HSNCP mixture model.
 
-function initalizemcmcstate!(state::MCMCState)
+function initalizemcmcstate!(state::MCMCState, model::NormalMeanModel)
   # TODO: initalization of the state of the MCMC.
 end
 
@@ -13,7 +13,7 @@ function hsncpmixturemodel_fit(
   thin = thin,
 )
   state = MCMCState(input.g, input.n)
-  initalizemcmcstate!(state)
+  initalizemcmcstate!(state, model)
 
   output = MCMCOutput(iterations, input.g, input.n, model)
 

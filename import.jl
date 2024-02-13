@@ -2,7 +2,9 @@
 
 using Random
 using Distributions
+using Roots
 
 include("models.jl")
 include("data_structures.jl")
+include("ferguson_klass.jl")
 include("sampler.jl")
