@@ -1,5 +1,4 @@
-include("models.jl")
-include("sampler.jl")
+include("import.jl")
 
 # Set the seed for reproducibility of the experiments.
 seed = 23478747247

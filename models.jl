@@ -1,3 +1,6 @@
+# This file contains all the models that can be used with the conditional
+# sampler.
+
 abstract type Model end
 
 struct NormalMeanModel <: Model
