@@ -16,8 +16,8 @@ function fergusonklass(func, epsilon)
     lastauxvar = auxvar
 
     #= We know that the jumps are positive and that the Ferguson-Klass algorithm
-    			generates them in decreasing order, therefore we know that the new jump
-    			will be between 0 and the last jump. =#
+    generates them in decreasing order, therefore we know that the new
+    jump will be between 0 and the last jump. =#
     jump = Roots.find_zero(
       x -> func(x) - auxvar,
       (0, output[end]),
