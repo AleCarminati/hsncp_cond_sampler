@@ -243,6 +243,54 @@ function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
   end
 end
 
+function updatewgroupcluslabels!(
+  state::MCMCState,
+  model::NormalMeanModel,
+  input::MCMCInput,
+)
+  for l = 1:input.g
+    jumps = hcat(
+      state.childrenallocatedatoms[l].jumps,
+      state.childrennonallocatedatoms[l].jumps,
+    )
+    locations = hcat(
+      state.childrenallocatedatoms[l].locations,
+      state.childrennonallocatedatoms[l].locations,
+    )
+    normals = Normal.(locations, fill(model.mixturecompsd, size(locations)[1]))
+    nalloc = size(state.childrenallocatedatoms[l].jumps)[1]
+    for i = 1:input.n[l]
+      probs = pdf.(normals, input.data[l][i]) .* jumps
+      probs = probs ./ sum(probs)
+
+      sampledidx = rand(Categorical(probs))
+
+      # Save the old clustering label of the atom.
+      oldidx = state.wgroupcluslabels[l][i]
+
+      if sampledidx <= nalloc
+        # The sampled atom is already an allocated atom.
+        state.wgroupcluslabels[l][i] = sampledidx
+        state.childrenallocatedatoms[l][sampledidx].counter += 1
+      else
+        # The sampled atom is a new atom.
+        allocatechildrenatom!(state; group = l, index = sampledidx - nalloc)
+        nalloc += 1
+        state.wgroupcluslabels[l][i] = nalloc
+      end
+
+      state.childrenallocatedatoms[l][oldidx].counter -= 1
+      # If the observation was the only one associated with a certain atom
+      # of the children process, remove the latter from the list of allocated
+      # atoms.
+      if state.childrenallocatedatoms[l][oldidx].counter == 0
+        deallocatechildrenatom!(state; group = l, index = oldidx)
+        nalloc -= 1
+      end
+    end
+  end
+end
+
 function updateauxu!(state::MCMCState, input::MCMCInput)
   # For each group, compute the sum of all the jumps of the corresponding
   # children process.
@@ -278,7 +326,7 @@ function hsncpmixturemodel_fit(
 
     updatechildrenatomslabels!(state, model)
 
-    # TODO: update MCMC state
+    updatewgroupcluslabels!(state, model, input)
 
     updateauxu!(state, input)
 
