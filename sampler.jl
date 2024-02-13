@@ -196,6 +196,53 @@ function updatechildprocessnonalloc!(
     zeros(size(state.childrennonallocatedatoms[l].jumps)[1])
 end
 
+function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
+  g = size(state.auxu)[1]
+
+  for l = 1:g
+    jumps = hcat(
+      state.motherallocatedatoms.jumps,
+      state.mothernonallocatedatoms.jumps,
+    )
+    locations = hcat(
+      state.motherallocatedatoms.locations,
+      state.mothernonallocatedatoms.locations,
+    )
+    normals = Normal.(locations, fill(model.kernelsd, size(locations)[1]))
+    nalloc = size(state.motherallocatedatoms.jumps)[1]
+    for i = 1:size(state.childrenallocatedatoms[l].location)[1]
+      probs =
+        pdf.(normals, state.childrenallocatedatoms[l].location[i]) .* jumps
+      probs = probs ./ sum(probs)
+
+      sampledidx = rand(Categorical(probs))
+
+      # Save the old clustering label of the atom.
+      oldidx = state.childrenatomslabels[l][i]
+
+      if sampledidx <= nalloc
+        # The sampled atom is already an allocated atom.
+        state.childrenatomslabels[l][i] = sampledidx
+        state.motherallocatedatoms[sampledidx].counter += 1
+      else
+        # The sampled atom is a new atom.
+        allocatemotheratom!(state; index = sampledidx - nalloc)
+        nalloc += 1
+        state.childrenatomslabels[l][i] = nalloc
+      end
+
+      state.motherallocatedatoms[oldidx].counter -= 1
+      # If the children atom was the only one associated with a certain atom
+      # of the mother process, remove the latter from the list of allocated
+      # atoms.
+      if state.motherallocatedatoms[oldidx].counter == 0
+        deallocatemotheratom!(state; index = oldidx)
+        nalloc -= 1
+      end
+    end
+  end
+end
+
 function updateauxu!(state::MCMCState, input::MCMCInput)
   # For each group, compute the sum of all the jumps of the corresponding
   # children process.
@@ -228,6 +275,8 @@ function hsncpmixturemodel_fit(
     updatemotherprocess!(state, model)
 
     updatechildrenprocesses!(input, state, model)
+
+    updatechildrenatomslabels!(state, model)
 
     # TODO: update MCMC state
 
