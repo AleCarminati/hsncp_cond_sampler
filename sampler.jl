@@ -158,7 +158,7 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
     )
 
   # For each allocated atom j of the mother process, compute the sum of all the
-  # atoms of the children processes that are associated with j.
+  # atoms of the child processes that are associated with j.
   sums = map(
     x -> sum(
       map(
@@ -207,11 +207,7 @@ function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
     zeros(size(state.mothernonallocatedatoms.jumps)[1])
 end
 
-function updatechildrenprocesses!(
-  input::MCMCInput,
-  state::MCMCState,
-  model::Model,
-)
+function updatechildprocesses!(input::MCMCInput, state::MCMCState, model::Model)
   g = size(state.childrenallocatedatoms)[1]
   for l = 1:g
     # Update the allocated atoms of the mother process.
@@ -283,7 +279,7 @@ function updatechildprocessnonalloc!(
 
   state.childrennonallocatedatoms[l].jumps = fergusonklass(f, 0.1)
 
-  # For each non allocated atom of the children process, sample which atom of
+  # For each non allocated atom of the child process, sample which atom of
   # the mother process it is associated with, using the jumps of the mother
   # process as weights.
   motheratomsjumps =
@@ -293,7 +289,7 @@ function updatechildprocessnonalloc!(
     Categorical(weights),
     size(state.childrennonallocatedatoms[l].jumps)[1],
   )
-  # Then, set up the distribution of the children process atoms based on the
+  # Then, set up the distribution of the child process' atoms based on the
   # Gaussian kernels centered in the associated atom of the mother process.
   motheratomslocations = hcat(
     state.motherallocatedatoms.locations,
@@ -396,7 +392,7 @@ function updatewgroupcluslabels!(
 
       state.childrenallocatedatoms[l][oldidx].counter -= 1
       # If the observation was the only one associated with a certain atom
-      # of the children process, remove the latter from the list of allocated
+      # of the child process, remove the latter from the list of allocated
       # atoms.
       if state.childrenallocatedatoms[l][oldidx].counter == 0
         deallocatechildrenatom!(state; group = l, index = oldidx)
@@ -408,14 +404,14 @@ end
 
 function updateauxu!(state::MCMCState, input::MCMCInput)
   # For each group, compute the sum of all the jumps of the corresponding
-  # children process.
+  # child process.
   sumjumps =
     map(x -> sum(x.jumps), state.childrenallocatedatoms) +
     map(x -> sum(x.jumps), state.childrennonallocatedatoms)
 
   #= Create g Gamma distributions, each one with shape equal to the number of
     observations in that group and rate equal to the sum of all the jumps of
-    the children process of that group. We write the inverse of the second
+    the child process of that group. We write the inverse of the second
     parameter because the Gamma() function requires the shape and the scale. =#
   gammas = Gamma.(input.n, 1 ./ sumjumps)
 
@@ -437,7 +433,7 @@ function hsncpmixturemodel_fit(
   for it = 1:(burnin+iterations*thin)
     updatemotherprocess!(state, model)
 
-    updatechildrenprocesses!(input, state, model)
+    updatechildprocesses!(input, state, model)
 
     updatechildrenatomslabels!(state, model)
 

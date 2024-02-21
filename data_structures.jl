@@ -50,18 +50,18 @@ mutable struct MCMCState
   # A vector containing the within-group clustering labels for each observation.
   const wgroupcluslabels::Vector{Vector{Integer}}
   # A vector containing, for each group, the clustering labels for each
-  # allocated atom of the children process.
+  # allocated atom of the child process.
   const childrenatomslabels::Vector{Vector{Integer}}
   #= A vector containing, for each group, the allocated atoms of the children
-  		process. A atom is allocated if it is linked to at least one observation
-  		through the clustering labels. =#
+  process. A atom is allocated if it is linked to at least one observation
+  through the clustering labels. =#
   const childrenallocatedatoms::Vector{AtomsContainer}
   # A matrix containing, for each group, the non allocated atoms of the children
   # process.
   childrennonallocatedatoms::Vector{AtomsContainer}
   #= A vector containing the allocated atoms of the mother process. A atom is
-  		allocated if it is linked to at least one allocated atom of the children
-  		processes throught the clustering labels. =#
+  allocated if it is linked to at least one allocated atom of the children
+  processes throught the clustering labels. =#
   const motherallocatedatoms::AtomsContainer
   # A vector containing the non allocated atoms of the mother process.
   mothernonallocatedatoms::AtomsContainer
@@ -80,7 +80,7 @@ mutable struct MCMCState
 end
 
 function deallocatechildrenatom!(state::MCMCState; group = l, index = h)
-  #= This function removes the h-indexed allocated atom of the children process
+  #= This function removes the h-indexed allocated atom of the child process
     of group l from the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency. =#
 
@@ -103,7 +103,7 @@ function deallocatechildrenatom!(state::MCMCState; group = l, index = h)
 end
 
 function allocatechildrenatom!(state::MCMCState; group = l, index = h)
-  #= This function adds the h-indexed non allocated atom of the children process
+  #= This function adds the h-indexed non allocated atom of the child process
     of group l to the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency.
     This function does not change the clustering labels, it just initializes the

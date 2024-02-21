@@ -8,7 +8,7 @@ struct NormalMeanModel <: Model
   		- Gaussian mixture components:
   			- fixed variance;
   			- random mean.
-  		- Children process: Lévy intensity for the jumps of is a Gamma with fixed
+  		- Child processes: Lévy intensity for the jumps of is a Gamma with fixed
   			parameters, for the locations we use a Gaussian kernel with fixed
   			variance.
   		- Mother process: Lévy intensity for the jumps is a Gamma with fixed
