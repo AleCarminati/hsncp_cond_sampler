@@ -1,8 +1,123 @@
 # This file contains the functions to run the conditional sampler for the
 # HSNCP mixture model.
 
-function initalizemcmcstate!(state::MCMCState, model::NormalMeanModel)
-  # TODO: initalization of the state of the MCMC.
+function initalizemcmcstate!(
+  input::MCMCInput,
+  state::MCMCState,
+  model::NormalMeanModel,
+)
+  # The number of atoms to sample for the mother process and for each child
+  # process.
+  mothernatoms = 10
+  childnatoms = 5
+
+  # Sample the atoms of the mother process.
+  motheratomsjumps = rand(
+    Distributions.Gamma(model.motherjumpshape, 1 / model.motherjumprate),
+    mothernatoms,
+  )
+  motheratomslocations =
+    rand(Distributions.Normal(0, model.motherlocsd), mothernatoms)
+
+  # Contains the frequency of the sampled labels for the mother process.
+  motherfreq = zeros(mothernatoms)
+
+  for l = 1:input.g
+    #= The sampled labels go from 1 to mothernatoms, while the labels of the
+      state should go from 1 to the number of allocated atoms of the mother
+      process. =#
+    tempmotherlabels =
+      rand(Distributions.DiscreteUniform(1, mothernatoms), childnatoms)
+
+    childatomsjumps = rand(
+      Distributions.Gamma(model.childenjumpshape, 1 / model.childenjumprate),
+      childnatoms,
+    )
+    # For each atom of the child process, sample its location based on
+    # the associated atom of the mother process.
+    childatomslocations =
+      rand.(
+        Distributions.Normal.(
+          motheratomsjumps[tempmotherlabels],
+          model.kernelsd,
+        ),
+        1,
+      )
+
+    #= The sampled labels go from 1 to childnatoms, while the labels of the
+      state should go from 1 to the number of allocated atoms of the child
+      process. =#
+    tempchildlabels =
+      rand(Distributions.DiscreteUniform(1, childnatoms), input.n[l])
+
+    # Compute the frequency of the sampled labels.
+    childfreq = StatsBase.counts(tempchildlabels, childnatoms)
+    # Extract the indexes of the atoms that have not been allocated.
+    nonallocatomsidx = (1:childnatoms)[childfreq.==0]
+    # Extract the indexes of the atoms that have been allocated.
+    allocatomsidx = (1:childnatoms)[childfreq.!=0]
+    #= Function that transforms the sampled labels (from 1 to childnatoms) in
+      the correct within-group cluster labels (from 1 to the number of allocated
+      atoms of the child process). =#
+    obtaincluslabel = x -> findall(allocatomsidx .== x)[1]
+    state.wgroupcluslabels[l] = map(obtaincluslabel, tempchildlabels)
+    # Select the jumps and the locations of the allocated child process' atoms.
+    state.childrenallocatedatoms[l].jumps = childatomsjumps[allocatomsidx]
+    state.childrenallocatedatoms[l].locations =
+      childatomslocations[allocatomsidx]
+    # The counters will be the frequencies of the sampled labels for the
+    # allocated atoms.
+    state.childrenallocatedatoms[l].counter = childfreq[allocatomsidx]
+
+    # Select the jumps and the locations of the non allocated child process'
+    # atoms.
+    state.childrennonallocatedatoms[l].jumps = childatomsjumps[nonallocatomsidx]
+    state.childrennonallocatedatoms[l].locations =
+      childatomslocations[nonallocatomsidx]
+    state.childrennonallocatedatoms[l].counter =
+      zeros(size(nonallocatomsidx)[1])
+
+    # Update the frequency of the sampled labels for the mother process.
+    motherfreq +=
+      StatsBase.counts(tempmotherlabels[allocatomsidx], mothernatoms)
+    #= Save the sampled labels in the state, only for the allocated child
+      process' atoms. Attention: at this stage, the sampled labels go from 1 to
+      mothernatoms, therefore they are not valid. They will be correctly
+      transformed between 1 and the number of allocated mother process' atoms at
+      the end of the for loop, when it is know how many atoms are of the mother
+      process are allocated. =#
+    state.childrenatomslabels[l] = tempmotherlabels[allocatomsidx]
+
+    state.auxu[l] = rand(Distributions.Gamma(input.n[l], sum(childatomsjumps)))
+  end
+
+  # Extract the indexes of the mother process' atoms that have not been
+  # allocated.
+  mothernonallocatomsidx = (1:mothernatoms)[motherfreq.==0]
+  # Extract the indexes of the mother process' atoms that have been allocated.
+  motherallocatomsidx = (1:mothernatoms)[motherfreq.!=0]
+
+  #= Function that transforms the sampled labels (from 1 to mothernatoms) in
+    the correct cluster labels for the child processes' atoms (from 1 to the
+    number of allocated atoms of the mother process).
+    Then, for each group, apply the function to the sampled labels vector. =#
+  obtaincluslabel = x -> findall(motherallocatomsidx .== x)[1]
+  state.childrenatomslabels =
+    map(l -> map(obtaincluslabel, state.childrenatomslabels[l]), 1:input.g)
+  # Select the jumps and the locations of the allocated mother process' atoms.
+  state.motherallocatedatoms.jumps = motheratomsjumps[motherallocatomsidx]
+  state.motherallocatedatoms.locations =
+    motheratomslocations[motherallocatomsidx]
+  # The counters will be the frequencies of the sampled labels for the
+  # allocated atoms.
+  state.motherallocatedatoms.counter = motherfreq[motherallocatomsidx]
+
+  # Select the jumps and the locations of the non allocated mother process'
+  # atoms.
+  state.mothernonallocatedatoms.jumps = motheratomsjumps[mothernonallocatomsidx]
+  state.mothernonallocatedatoms.locations =
+    motheratomslocations[mothernonallocatomsidx]
+  state.mothernonallocatedatoms.counter = zeros(size(mothernonallocatomsidx)[1])
 end
 
 function updatemotherprocess!(state::MCMCState, model::Model)
@@ -315,7 +430,7 @@ function hsncpmixturemodel_fit(
   thin = thin,
 )
   state = MCMCState(input.g, input.n)
-  initalizemcmcstate!(state, model)
+  initalizemcmcstate!(input, state, model)
 
   output = MCMCOutput(iterations, input.g, input.n, model)
 

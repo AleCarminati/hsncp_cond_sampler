@@ -1,6 +1,7 @@
 # This file contains all the commands to import modules and other files.
 
 using Random
+using StatsBase
 using Distributions
 using Roots
 using SpecialFunctions
