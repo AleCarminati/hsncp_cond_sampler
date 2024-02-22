@@ -4,6 +4,7 @@ using Random
 using StatsBase
 using Distributions
 using Roots
+using SpecialFunctions
 
 include("models.jl")
 include("data_structures.jl")

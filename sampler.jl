@@ -12,10 +12,7 @@ function initalizemcmcstate!(
   childnatoms = 5
 
   # Sample the atoms of the mother process.
-  motheratomsjumps = rand(
-    Distributions.Gamma(model.motherjumpshape, 1 / model.motherjumprate),
-    mothernatoms,
-  )
+  motheratomsjumps = rand(Distributions.Gamma(1, 1), mothernatoms)
   motheratomslocations =
     rand.(fill(Distributions.Normal(0, model.motherlocsd), mothernatoms), 1)
 
@@ -29,10 +26,7 @@ function initalizemcmcstate!(
     tempmotherlabels =
       rand(Distributions.DiscreteUniform(1, mothernatoms), childnatoms)
 
-    childatomsjumps = rand(
-      Distributions.Gamma(model.childrenjumpshape, 1 / model.childrenjumprate),
-      childnatoms,
-    )
+    childatomsjumps = rand(Distributions.Gamma(1, 1), childnatoms)
     # For each atom of the child process, sample its location based on
     # the associated atom of the mother process.
     childatomslocations =
@@ -133,12 +127,8 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   # First, sample the jumps.
 
   g = size(state.childrenallocatedatoms)[1]
-  shape = model.motherjumpshape .+ state.motherallocatedatoms.counter
-  rate =
-    model.motherjumprate + g - sum(
-      (model.childrenjumprate ./ (state.auxu .+ model.childrenjumprate)) .^
-      (model.childrenjumpshape),
-    )
+  shape = state.motherallocatedatoms.counter
+  rate = 1 + model.childrentotalmass * sum(log.(1 .+ state.auxu))
   # The rate is equal for all the Gamma distributions, therefore transform it
   # from a scalar to a vector with the same values.
   rate = fill(rate, size(shape)[1])
@@ -185,15 +175,10 @@ end
 function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
   g = size(state.childrenallocatedatoms)[1]
 
-  new_rate =
-    model.motherjumprate + g - sum(
-      (model.childrenjumprate ./ (state.auxu .+ model.childrenjumprate)) .^
-      model.childrenjumpshape,
-    )
-
-  coef = (model.motherjumprate / new_rate)^model.motherjumpshape
-
-  f = x -> coef * (1 - cdf(Gamma(model.motherjumpshape, 1 / new_rate), x))
+  f =
+    x ->
+      model.mothertotalmass *
+      gamma(0, x * (1 + model.childrentotalmass * sum(log.(1 .+ state.auxu))))
 
   state.mothernonallocatedatoms.jumps = fergusonklass(f, 0.1)
 
@@ -231,10 +216,10 @@ function updatechildprocessalloc!(
 
   # First, sample the jumps.
 
-  shapes = model.childrenjumpshape .+ state.childrenallocatedatoms[l].counter
-  scales = fill(1 / (model.childrenjumprate + state.auxu[l]))
+  shape = state.childrenallocatedatoms[l].counter
+  rate = fill(1 + state.auxu[l], size(shape)[1])
 
-  gammas = Gamma.(shapes, scales)
+  gammas = Gamma.(shape, 1 ./ rate)
 
   state.childrenallocatedatoms[l].jumps[:] = rand.(gammas)
 
@@ -275,11 +260,7 @@ function updatechildprocessnonalloc!(
   model::NormalMeanModel,
   l,
 )
-  new_rate = model.childrenjumprate + state.auxu[l]
-
-  coef = (model.childrenjumprate / new_rate)^model.childrenjumpshape
-
-  f = x -> coef * (1 - cdf(Gamma(model.childrenjumpshape, 1 / new_rate), x))
+  f = x -> model.childrentotalmass * gamma(0, x * (1 + state.auxu[l]))
 
   state.childrennonallocatedatoms[l].jumps = fergusonklass(f, 0.1)
 
