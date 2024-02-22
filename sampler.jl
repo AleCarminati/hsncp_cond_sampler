@@ -193,10 +193,7 @@ function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
 
   coef = (model.motherjumprate / new_rate)^model.motherjumpshape
 
-  f =
-    x ->
-      coef * gamma(model.motherjumpshape, new_rate * x) /
-      gamma(model.motherjumpshape)
+  f = x -> coef * (1 - cdf(Gamma(model.motherjumpshape, 1 / new_rate), x))
 
   state.mothernonallocatedatoms.jumps = fergusonklass(f, 0.1)
 
@@ -282,10 +279,7 @@ function updatechildprocessnonalloc!(
 
   coef = (model.childrenjumprate / new_rate)^model.childrenjumpshape
 
-  f =
-    x ->
-      coef * gamma(model.childrenjumpshape, new_rate * x) /
-      gamma(model.childrenjumpshape)
+  f = x -> coef * (1 - cdf(Gamma(model.childrenjumpshape, 1 / new_rate), x))
 
   state.childrennonallocatedatoms[l].jumps = fergusonklass(f, 0.1)
 
