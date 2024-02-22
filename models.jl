@@ -21,8 +21,8 @@ struct NormalMeanModel <: Model
 
   # Hyperparameters for the Gamma distribution of the jumps of the children
   # processes.
-  childenjumpshape::Real
-  childenjumprate::Real
+  childrenjumpshape::Real
+  childrenjumprate::Real
 
   # Standard deviation of the Gaussian kernel.
   kernelsd::Real

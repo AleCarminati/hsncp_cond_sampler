@@ -15,9 +15,9 @@ struct MCMCInput
   end
 end
 
-struct AtomsContainer
+mutable struct AtomsContainer
   jumps::Vector{Real}
-  locations::Array{Real}
+  locations::Vector{Array{Real}}
   # Count how many atoms (or observations) are linked to this atoms through the
   # clustering labels.
   counter::Vector{Integer}
@@ -27,13 +27,13 @@ struct AtomsContainer
   end
 end
 
-function deleteat!(atoms::AtomsContainer; index = h)
+function deleteatatomcont!(atoms::AtomsContainer; index = h)
   jump = deleteat!(atoms.jumps, h)
   location = deleteat!(atoms.locations, h)
   counter = deleteat!(atoms.counter, h)
 end
 
-function push!(
+function pushatomcont!(
   atoms::AtomsContainer;
   jump = jump,
   location = location,
@@ -51,11 +51,11 @@ mutable struct MCMCState
   const wgroupcluslabels::Vector{Vector{Integer}}
   # A vector containing, for each group, the clustering labels for each
   # allocated atom of the child process.
-  const childrenatomslabels::Vector{Vector{Integer}}
+  childrenatomslabels::Vector{Vector{Integer}}
   #= A vector containing, for each group, the allocated atoms of the children
   process. A atom is allocated if it is linked to at least one observation
   through the clustering labels. =#
-  const childrenallocatedatoms::Vector{AtomsContainer}
+  childrenallocatedatoms::Vector{AtomsContainer}
   # A matrix containing, for each group, the non allocated atoms of the children
   # process.
   childrennonallocatedatoms::Vector{AtomsContainer}
@@ -70,9 +70,9 @@ mutable struct MCMCState
     new(
       zeros(g),
       [zeros(n[l]) for l = 1:g],
-      fill(Integer[], g),
-      AtomsContainer[],
-      AtomsContainer[],
+      [Integer[] for _ = 1:g],
+      [AtomsContainer() for _ = 1:g],
+      [AtomsContainer() for _ = 1:g],
       AtomsContainer(),
       AtomsContainer(),
     )
@@ -86,10 +86,10 @@ function deallocatechildrenatom!(state::MCMCState; group = l, index = h)
 
   # Remove all the information of the selected atom from the list of allocated
   # atoms.
-  jump, location, _ = deleteat!(state.childrenallocatedatoms[l], h)
+  jump, location, _ = deleteatatomcont!(state.childrenallocatedatoms[l], h)
 
   # Add the selected atom to the list of non allocated atoms.
-  push!(state.childrennonallocatedatoms[l], jump, location, 0)
+  pushatomcont!(state.childrennonallocatedatoms[l], jump, location, 0)
 
   # Remove the clustering label for the selected atom. Indeed, the state does
   # not contain clustering labels for non allocated atoms.
@@ -111,10 +111,10 @@ function allocatechildrenatom!(state::MCMCState; group = l, index = h)
 
   # Remove all the information of the selected atom from the list of non
   # allocated atoms.
-  jump, location, _ = deleteat!(state.childrennonallocatedatoms[l], h)
+  jump, location, _ = deleteatatomcont!(state.childrennonallocatedatoms[l], h)
 
   # Add the selected atom to the list of non allocated atoms.
-  push!(state.childrenallocatedatoms[l], jump, location, 1)
+  pushatomcont!(state.childrenallocatedatoms[l], jump, location, 1)
 end
 
 function deallocatemotheratom!(state::MCMCState; index = j)
@@ -124,10 +124,10 @@ function deallocatemotheratom!(state::MCMCState; index = j)
 
   # Remove all the information of the selected atom from the list of allocated
   # atoms.
-  jump, location, _ = deleteat!(state.motherallocatedatoms, j)
+  jump, location, _ = deleteatatomcont!(state.motherallocatedatoms, j)
 
   # Add the selected atom to the list of non allocated atoms.
-  push!(state.mothernonallocatedatoms, jump, location, 0)
+  pushatomcont!(state.mothernonallocatedatoms, jump, location, 0)
 
   #= Given that an allocated atom has been removed, the other allocated atoms
     with index greater than j had their index reduced by 1. Thus, we reduce the
@@ -149,7 +149,7 @@ function allocatemotheratom!(state::MCMCState; index = j)
   jump, location, _ = deleteat!(state.mothernonallocatedatoms, j)
 
   # Add the selected atom to the list of non allocated atoms.
-  push!(state.motherallocatedatoms, jump, location, 1)
+  pushatomcont!(state.motherallocatedatoms, jump, location, 1)
 end
 
 struct MCMCOutput

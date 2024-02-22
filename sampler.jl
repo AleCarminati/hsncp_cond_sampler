@@ -17,7 +17,7 @@ function initalizemcmcstate!(
     mothernatoms,
   )
   motheratomslocations =
-    rand(Distributions.Normal(0, model.motherlocsd), mothernatoms)
+    rand.(fill(Distributions.Normal(0, model.motherlocsd), mothernatoms), 1)
 
   # Contains the frequency of the sampled labels for the mother process.
   motherfreq = zeros(mothernatoms)
@@ -30,7 +30,7 @@ function initalizemcmcstate!(
       rand(Distributions.DiscreteUniform(1, mothernatoms), childnatoms)
 
     childatomsjumps = rand(
-      Distributions.Gamma(model.childenjumpshape, 1 / model.childenjumprate),
+      Distributions.Gamma(model.childrenjumpshape, 1 / model.childrenjumprate),
       childnatoms,
     )
     # For each atom of the child process, sample its location based on
@@ -60,20 +60,22 @@ function initalizemcmcstate!(
       the correct within-group cluster labels (from 1 to the number of allocated
       atoms of the child process). =#
     obtaincluslabel = x -> findall(allocatomsidx .== x)[1]
-    state.wgroupcluslabels[l] = map(obtaincluslabel, tempchildlabels)
+    state.wgroupcluslabels[l] = deepcopy(map(obtaincluslabel, tempchildlabels))
     # Select the jumps and the locations of the allocated child process' atoms.
-    state.childrenallocatedatoms[l].jumps = childatomsjumps[allocatomsidx]
+    state.childrenallocatedatoms[l].jumps =
+      deepcopy(childatomsjumps[allocatomsidx])
     state.childrenallocatedatoms[l].locations =
-      childatomslocations[allocatomsidx]
+      deepcopy(childatomslocations[allocatomsidx])
     # The counters will be the frequencies of the sampled labels for the
     # allocated atoms.
-    state.childrenallocatedatoms[l].counter = childfreq[allocatomsidx]
+    state.childrenallocatedatoms[l].counter = deepcopy(childfreq[allocatomsidx])
 
     # Select the jumps and the locations of the non allocated child process'
     # atoms.
-    state.childrennonallocatedatoms[l].jumps = childatomsjumps[nonallocatomsidx]
+    state.childrennonallocatedatoms[l].jumps =
+      deepcopy(childatomsjumps[nonallocatomsidx])
     state.childrennonallocatedatoms[l].locations =
-      childatomslocations[nonallocatomsidx]
+      deepcopy(childatomslocations[nonallocatomsidx])
     state.childrennonallocatedatoms[l].counter =
       zeros(size(nonallocatomsidx)[1])
 
@@ -86,7 +88,7 @@ function initalizemcmcstate!(
       transformed between 1 and the number of allocated mother process' atoms at
       the end of the for loop, when it is know how many atoms are of the mother
       process are allocated. =#
-    state.childrenatomslabels[l] = tempmotherlabels[allocatomsidx]
+    state.childrenatomslabels[l] = deepcopy(tempmotherlabels[allocatomsidx])
 
     state.auxu[l] = rand(Distributions.Gamma(input.n[l], sum(childatomsjumps)))
   end
@@ -134,8 +136,8 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   shape = model.motherjumpshape .+ state.motherallocatedatoms.counter
   rate =
     model.motherjumprate + g - sum(
-      (model.childenjumprate ./ (state.auxu .+ model.childenjumprate)) .^
-      (model.childenjumpshape),
+      (model.childrenjumprate ./ (state.auxu .+ model.childrenjumprate)) .^
+      (model.childrenjumpshape),
     )
   # The rate is equal for all the Gamma distributions, therefore transform it
   # from a scalar to a vector with the same values.
@@ -145,7 +147,7 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   # requires the shape and the scale.
   gammas = Gamma.(shape, 1 ./ rate)
 
-  state.motherallocatedatoms.jumps[:] = rand.(gammas, 1)
+  state.motherallocatedatoms.jumps[:] = rand.(gammas)
 
   # Then, sample the locations.
 
@@ -185,8 +187,8 @@ function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
 
   new_rate =
     model.motherjumprate + g - sum(
-      (model.childenjumprate ./ (state.auxu .+ model.childenjumprate)) .^
-      model.childenjumpshape,
+      (model.childrenjumprate ./ (state.auxu .+ model.childrenjumprate)) .^
+      model.childrenjumpshape,
     )
 
   coef = (model.motherjumprate / new_rate)^model.motherjumpshape
@@ -198,10 +200,14 @@ function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
 
   state.mothernonallocatedatoms.jumps = fergusonklass(f, 0.1)
 
-  state.mothernonallocatedatoms.locations = rand(
-    Normal(0, model.motherlocsd),
-    size(state.mothernonallocatedatoms.jumps)[1],
-  )
+  state.mothernonallocatedatoms.locations =
+    rand.(
+      fill(
+        Normal(0, model.motherlocsd),
+        size(state.mothernonallocatedatoms.jumps)[1],
+      ),
+      1,
+    )
 
   state.mothernonallocatedatoms.counter =
     zeros(size(state.mothernonallocatedatoms.jumps)[1])
@@ -228,18 +234,18 @@ function updatechildprocessalloc!(
 
   # First, sample the jumps.
 
-  shapes = model.childenjumpshape .+ state.childrenallocatedatoms[l].counter
-  scales = fill(1 / (model.childenjumprate + state.auxu[l]))
+  shapes = model.childrenjumpshape .+ state.childrenallocatedatoms[l].counter
+  scales = fill(1 / (model.childrenjumprate + state.auxu[l]))
 
   gammas = Gamma.(shapes, scales)
 
-  state.childrenallocatedatoms[l].jumps[:] = rand.(gammas, 1)
+  state.childrenallocatedatoms[l].jumps[:] = rand.(gammas)
 
   # Then, sample the locations.
 
   standevs =
     sqrt.(
-      1.0 / (
+      1.0 ./ (
         1 / model.kernelsd^2 .+
         state.childrenallocatedatoms[l].counter ./ model.mixturecompsd^2
       )
@@ -252,10 +258,14 @@ function updatechildprocessalloc!(
     Vector(1:nallocatoms),
   )
 
+  #= Note that the locations vector is a vector of one-dimensional vectors
+    because this is a univariate model. Therefore, to do the computations we
+    have to flatten the vector of vectors. =#
   means =
     standevs .^ 2 .* (
-      state.motherallocatedatoms.locations[state.childrenatomslabels[l]] ./
-      model.kernelsd^2 .+ sums ./ model.mixturecompsd^2
+      vcat(
+        state.motherallocatedatoms.locations[state.childrenatomslabels[l]]...,
+      ) ./ model.kernelsd^2 .+ sums ./ model.mixturecompsd^2
     )
 
   normals = Normal.(means, standevs)
@@ -268,9 +278,9 @@ function updatechildprocessnonalloc!(
   model::NormalMeanModel,
   l,
 )
-  new_rate = model.childenjumprate + state.auxu[l]
+  new_rate = model.childrenjumprate + state.auxu[l]
 
-  coef = (model.childenjumprate / new_rate)^model.childrenjumpshape
+  coef = (model.childrenjumprate / new_rate)^model.childrenjumpshape
 
   f =
     x ->
@@ -283,17 +293,19 @@ function updatechildprocessnonalloc!(
   # the mother process it is associated with, using the jumps of the mother
   # process as weights.
   motheratomsjumps =
-    hcat(state.motherallocatedatoms.jumps, state.mothernonallocatedatoms.jumps)
+    vcat(state.motherallocatedatoms.jumps, state.mothernonallocatedatoms.jumps)
   weights = motheratomsjumps ./ sum(motheratomsjumps)
   associations = rand(
     Categorical(weights),
     size(state.childrennonallocatedatoms[l].jumps)[1],
   )
-  # Then, set up the distribution of the child process' atoms based on the
-  # Gaussian kernels centered in the associated atom of the mother process.
-  motheratomslocations = hcat(
-    state.motherallocatedatoms.locations,
-    state.mothernonallocatedatoms.locations,
+  #= Then, set up the distribution of the child process' atoms based on the
+    Gaussian kernels centered in the associated atom of the mother process.
+    We use vcat() to flatten the locations because they are vectors of
+    1-dimensional vectors. =#
+  motheratomslocations = vcat(
+    vcat(state.motherallocatedatoms.locations...),
+    vcat(state.mothernonallocatedatoms.locations...),
   )
   normals = Normal(
     motheratomslocations[associations],
