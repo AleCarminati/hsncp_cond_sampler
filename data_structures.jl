@@ -27,18 +27,17 @@ mutable struct AtomsContainer
   end
 end
 
-function deleteatatomcont!(atoms::AtomsContainer; index = h)
-  jump = deleteat!(atoms.jumps, h)
-  location = deleteat!(atoms.locations, h)
-  counter = deleteat!(atoms.counter, h)
+function deleteatatomcont!(atoms::AtomsContainer, h)
+  jump = atoms.jumps[h]
+  deleteat!(atoms.jumps, h)
+  location = atoms.locations[h]
+  deleteat!(atoms.locations, h)
+  counter = atoms.counter[h]
+  deleteat!(atoms.counter, h)
+  return jump, location, counter
 end
 
-function pushatomcont!(
-  atoms::AtomsContainer;
-  jump = jump,
-  location = location,
-  counter = counter,
-)
+function pushatomcont!(atoms::AtomsContainer, jump, location, counter)
   push!(atoms.jumps, jump)
   push!(atoms.locations, location)
   push!(atoms.counter, counter)
@@ -79,7 +78,7 @@ mutable struct MCMCState
   end
 end
 
-function deallocatechildrenatom!(state::MCMCState; group = l, index = h)
+function deallocatechildrenatom!(state::MCMCState, l, h)
   #= This function removes the h-indexed allocated atom of the child process
     of group l from the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency. =#
@@ -102,7 +101,7 @@ function deallocatechildrenatom!(state::MCMCState; group = l, index = h)
     state.wgroupcluslabels[l] - (state.wgroupcluslabels[l] .> h)
 end
 
-function allocatechildrenatom!(state::MCMCState; group = l, index = h)
+function allocatechildrenatom!(state::MCMCState, l, h)
   #= This function adds the h-indexed non allocated atom of the child process
     of group l to the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency.
@@ -117,7 +116,7 @@ function allocatechildrenatom!(state::MCMCState; group = l, index = h)
   pushatomcont!(state.childrenallocatedatoms[l], jump, location, 1)
 end
 
-function deallocatemotheratom!(state::MCMCState; index = j)
+function deallocatemotheratom!(state::MCMCState, j)
   #= This function removes the j-indexed allocated atom of the mother process
     from the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency. =#
@@ -130,14 +129,14 @@ function deallocatemotheratom!(state::MCMCState; index = j)
   pushatomcont!(state.mothernonallocatedatoms, jump, location, 0)
 
   #= Given that an allocated atom has been removed, the other allocated atoms
-    with index greater than j had their index reduced by 1. Thus, we reduce the
-    corresponding index in the vector of the children atoms clustering labels.
-    We use the map() function because this operation must be repeated for every
-    group. =#
+    with index greater than j had their index reduced by 1. Thus, we reduce
+    the corresponding index in the vector of the children atoms clustering
+    labels. We use the map() function because this operation must be repeated
+    for every group. =#
   state.childrenatomslabels = map(x -> x .- (x .> j), state.childrenatomslabels)
 end
 
-function allocatemotheratom!(state::MCMCState; index = j)
+function allocatemotheratom!(state::MCMCState, j)
   #= This function adds the j-indexed non allocated atom of the mother process
     to the list of allocated atoms. It also modifies the other elements of the
     state to maintain coherency.

@@ -282,15 +282,16 @@ function updatechildprocessnonalloc!(
     vcat(state.motherallocatedatoms.locations...),
     vcat(state.mothernonallocatedatoms.locations...),
   )
-  normals = Normal(
-    motheratomslocations[associations],
-    fill(model.kernelsd, size(state.childrennonallocatedatoms[l].jumps)[1]),
-  )
+  normals =
+    Normal.(
+      motheratomslocations[associations],
+      fill(model.kernelsd, size(state.childrennonallocatedatoms[l].jumps)[1]),
+    )
   # Eventually, sample the locations, using the distributions created in the
   # last lines.
-  state.childrennonallocatedatoms.locations = rand.(normals, 1)
+  state.childrennonallocatedatoms[l].locations = rand.(normals, 1)
 
-  state.childrennonallocatedatoms.counter =
+  state.childrennonallocatedatoms[l].counter =
     zeros(size(state.childrennonallocatedatoms[l].jumps)[1])
 end
 
@@ -298,19 +299,21 @@ function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
   g = size(state.auxu)[1]
 
   for l = 1:g
-    jumps = hcat(
+    jumps = vcat(
       state.motherallocatedatoms.jumps,
       state.mothernonallocatedatoms.jumps,
     )
-    locations = hcat(
-      state.motherallocatedatoms.locations,
-      state.mothernonallocatedatoms.locations,
+    # We use vcat() to flatten the locations because they are vectors of
+    # 1-dimensional vectors.
+    locations = vcat(
+      vcat(state.motherallocatedatoms.locations...),
+      vcat(state.mothernonallocatedatoms.locations...),
     )
     normals = Normal.(locations, fill(model.kernelsd, size(locations)[1]))
     nalloc = size(state.motherallocatedatoms.jumps)[1]
-    for i = 1:size(state.childrenallocatedatoms[l].location)[1]
+    for i = 1:size(state.childrenallocatedatoms[l].locations)[1]
       probs =
-        pdf.(normals, state.childrenallocatedatoms[l].location[i]) .* jumps
+        pdf.(normals, state.childrenallocatedatoms[l].locations[i]) .* jumps
       probs = probs ./ sum(probs)
 
       sampledidx = rand(Categorical(probs))
@@ -321,20 +324,20 @@ function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
       if sampledidx <= nalloc
         # The sampled atom is already an allocated atom.
         state.childrenatomslabels[l][i] = sampledidx
-        state.motherallocatedatoms[sampledidx].counter += 1
+        state.motherallocatedatoms.counter[sampledidx] += 1
       else
         # The sampled atom is a new atom.
-        allocatemotheratom!(state; index = sampledidx - nalloc)
+        allocatemotheratom!(state, sampledidx - nalloc)
         nalloc += 1
         state.childrenatomslabels[l][i] = nalloc
       end
 
-      state.motherallocatedatoms[oldidx].counter -= 1
+      state.motherallocatedatoms.counter[oldidx] -= 1
       # If the children atom was the only one associated with a certain atom
       # of the mother process, remove the latter from the list of allocated
       # atoms.
-      if state.motherallocatedatoms[oldidx].counter == 0
-        deallocatemotheratom!(state; index = oldidx)
+      if state.motherallocatedatoms.counter[oldidx] == 0
+        deallocatemotheratom!(state, oldidx)
         nalloc -= 1
       end
     end
@@ -347,13 +350,15 @@ function updatewgroupcluslabels!(
   input::MCMCInput,
 )
   for l = 1:input.g
-    jumps = hcat(
+    jumps = vcat(
       state.childrenallocatedatoms[l].jumps,
       state.childrennonallocatedatoms[l].jumps,
     )
-    locations = hcat(
-      state.childrenallocatedatoms[l].locations,
-      state.childrennonallocatedatoms[l].locations,
+    # We use vcat() to flatten the locations because they are vectors of
+    # 1-dimensional vectors.
+    locations = vcat(
+      vcat(state.childrenallocatedatoms[l].locations...),
+      vcat(state.childrennonallocatedatoms[l].locations...),
     )
     normals = Normal.(locations, fill(model.mixturecompsd, size(locations)[1]))
     nalloc = size(state.childrenallocatedatoms[l].jumps)[1]
@@ -369,20 +374,20 @@ function updatewgroupcluslabels!(
       if sampledidx <= nalloc
         # The sampled atom is already an allocated atom.
         state.wgroupcluslabels[l][i] = sampledidx
-        state.childrenallocatedatoms[l][sampledidx].counter += 1
+        state.childrenallocatedatoms[l].counter[sampledidx] += 1
       else
         # The sampled atom is a new atom.
-        allocatechildrenatom!(state; group = l, index = sampledidx - nalloc)
+        allocatechildrenatom!(state, l, sampledidx - nalloc)
         nalloc += 1
         state.wgroupcluslabels[l][i] = nalloc
       end
 
-      state.childrenallocatedatoms[l][oldidx].counter -= 1
+      state.childrenallocatedatoms[l].counter[oldidx] -= 1
       # If the observation was the only one associated with a certain atom
       # of the child process, remove the latter from the list of allocated
       # atoms.
-      if state.childrenallocatedatoms[l][oldidx].counter == 0
-        deallocatechildrenatom!(state; group = l, index = oldidx)
+      if state.childrenallocatedatoms[l].counter[oldidx] == 0
+        deallocatechildrenatom!(state, l, oldidx)
         nalloc -= 1
       end
     end
@@ -402,7 +407,7 @@ function updateauxu!(state::MCMCState, input::MCMCInput)
     parameter because the Gamma() function requires the shape and the scale. =#
   gammas = Gamma.(input.n, 1 ./ sumjumps)
 
-  state.auxu[:] = rand.(gammas, 1)
+  state.auxu[:] = rand.(gammas)
 end
 
 function hsncpmixturemodel_fit(
