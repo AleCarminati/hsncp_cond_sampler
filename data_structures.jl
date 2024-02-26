@@ -202,14 +202,20 @@ function updatemcmcoutput!(
 
     # Copy the within-group clustering labels from the state.
     output.wgroupcluslabels[l][idx, :] = deepcopy(state.wgroupcluslabels[l])
+
     # Obtain the within-group cluster locations for each observations using the
-    # clustering labels.
-    output.cluslocations[l][idx, :] = deepcopy(
-      state.childrenallocatedatoms[l].locations[state.wgroupcluslabels[l]],
+    # clustering labels. We have to use stack() to transform the vector of
+    # vectors (containing the locations) in a matrix.
+    output.cluslocations[l][idx, :, :] = deepcopy(
+      stack(
+        state.childrenallocatedatoms[l].locations[state.wgroupcluslabels[l]],
+        dims = 1,
+      ),
     )
+
     # Obtain the across-group cluster locations for each observations using the
     # clustering labels.
-    output.agroupcluslabels[idx, rangeobs] =
+    output.agroupcluslabels[l][idx, :] =
       deepcopy(state.childrenatomslabels[l][state.wgroupcluslabels[l]])
   end
 end
