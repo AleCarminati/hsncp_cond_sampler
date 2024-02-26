@@ -78,6 +78,22 @@ mutable struct MCMCState
   end
 end
 
+function getalljumps(state::MCMCState; group = nothing)
+  # Returns a vector containing all the jumps of the child process (if group is
+  # specified) or the mother process (if group is not specified).
+  if group == nothing
+    return vcat(
+      state.motherallocatedatoms.jumps,
+      state.mothernonallocatedatoms.jumps,
+    )
+  else
+    return vcat(
+      state.childrenallocatedatoms[group].jumps,
+      state.childrennonallocatedatoms[group].jumps,
+    )
+  end
+end
+
 function deallocatechildrenatom!(state::MCMCState, l, h)
   #= This function removes the h-indexed allocated atom of the child process
     of group l from the list of allocated atoms. It also modifies the other
@@ -101,7 +117,7 @@ function deallocatechildrenatom!(state::MCMCState, l, h)
     state.wgroupcluslabels[l] - (state.wgroupcluslabels[l] .> h)
 end
 
-function allocatechildrenatom!(state::MCMCState, l, h)
+function allocatechildrenatom!(state::MCMCState, l, h, atomlabel)
   #= This function adds the h-indexed non allocated atom of the child process
     of group l to the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency.
@@ -111,6 +127,9 @@ function allocatechildrenatom!(state::MCMCState, l, h)
   # Remove all the information of the selected atom from the list of non
   # allocated atoms.
   jump, location, _ = deleteatatomcont!(state.childrennonallocatedatoms[l], h)
+
+  # Add the clustering label for the selected atom.
+  push!(state.childrenatomslabels[l], atomlabel)
 
   # Add the selected atom to the list of non allocated atoms.
   pushatomcont!(state.childrenallocatedatoms[l], jump, location, 1)

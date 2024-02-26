@@ -123,6 +123,35 @@ function updatemotherprocess!(state::MCMCState, model::Model)
   updatemotherprocessnonalloc!(state, model)
 end
 
+function getatomcenterednormals(
+  state::MCMCState,
+  model::NormalMeanModel;
+  group = nothing,
+)
+  #= This function returns a vector of Normal distributions.
+    - group not specified: it returns Normal kernels centered in the locations
+      of the mother process' atoms.
+    - group specified: it returns Normal mixture components centered in the
+      locations of the specified group child process' atoms. =#
+
+  if group == nothing
+    allocatedatomscontainer = state.motherallocatedatoms
+    nonallocatedatomscontainer = state.mothernonallocatedatoms
+    sd = model.kernelsd
+  else
+    allocatedatomscontainer = state.childrenallocatedatoms[group]
+    nonallocatedatomscontainer = state.childrennonallocatedatoms[group]
+    sd = model.mixturecompsd
+  end
+  # We use vcat() to flatten the locations because they are vectors of
+  # 1-dimensional vectors.
+  locations = vcat(
+    vcat(allocatedatomscontainer.locations...),
+    vcat(nonallocatedatomscontainer.locations...),
+  )
+  return Normal.(locations, fill(sd, size(locations)[1]))
+end
+
 function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   # First, sample the jumps.
 
@@ -267,26 +296,16 @@ function updatechildprocessnonalloc!(
   # For each non allocated atom of the child process, sample which atom of
   # the mother process it is associated with, using the jumps of the mother
   # process as weights.
-  motheratomsjumps =
-    vcat(state.motherallocatedatoms.jumps, state.mothernonallocatedatoms.jumps)
+  motheratomsjumps = getalljumps(state)
   weights = motheratomsjumps ./ sum(motheratomsjumps)
   associations = rand(
     Categorical(weights),
     size(state.childrennonallocatedatoms[l].jumps)[1],
   )
-  #= Then, set up the distribution of the child process' atoms based on the
-    Gaussian kernels centered in the associated atom of the mother process.
-    We use vcat() to flatten the locations because they are vectors of
-    1-dimensional vectors. =#
-  motheratomslocations = vcat(
-    vcat(state.motherallocatedatoms.locations...),
-    vcat(state.mothernonallocatedatoms.locations...),
-  )
-  normals =
-    Normal.(
-      motheratomslocations[associations],
-      fill(model.kernelsd, size(state.childrennonallocatedatoms[l].jumps)[1]),
-    )
+  # Then, set up the distribution of the child process' atoms based on the
+  # Gaussian kernels centered in the associated atom of the mother process.
+  normals = getatomcenterednormals(state, model)[associations]
+
   # Eventually, sample the locations, using the distributions created in the
   # last lines.
   state.childrennonallocatedatoms[l].locations = rand.(normals, 1)
@@ -298,19 +317,10 @@ end
 function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
   g = size(state.auxu)[1]
 
+  jumps = getalljumps(state)
+  normals = getatomcenterednormals(state, model)
+  nalloc = size(state.motherallocatedatoms.jumps)[1]
   for l = 1:g
-    jumps = vcat(
-      state.motherallocatedatoms.jumps,
-      state.mothernonallocatedatoms.jumps,
-    )
-    # We use vcat() to flatten the locations because they are vectors of
-    # 1-dimensional vectors.
-    locations = vcat(
-      vcat(state.motherallocatedatoms.locations...),
-      vcat(state.mothernonallocatedatoms.locations...),
-    )
-    normals = Normal.(locations, fill(model.kernelsd, size(locations)[1]))
-    nalloc = size(state.motherallocatedatoms.jumps)[1]
     for i = 1:size(state.childrenallocatedatoms[l].locations)[1]
       probs =
         pdf.(normals, state.childrenallocatedatoms[l].locations[i]) .* jumps
@@ -350,17 +360,8 @@ function updatewgroupcluslabels!(
   input::MCMCInput,
 )
   for l = 1:input.g
-    jumps = vcat(
-      state.childrenallocatedatoms[l].jumps,
-      state.childrennonallocatedatoms[l].jumps,
-    )
-    # We use vcat() to flatten the locations because they are vectors of
-    # 1-dimensional vectors.
-    locations = vcat(
-      vcat(state.childrenallocatedatoms[l].locations...),
-      vcat(state.childrennonallocatedatoms[l].locations...),
-    )
-    normals = Normal.(locations, fill(model.mixturecompsd, size(locations)[1]))
+    jumps = getalljumps(state, group = l)
+    normals = getatomcenterednormals(state, model, group = l)
     nalloc = size(state.childrenallocatedatoms[l].jumps)[1]
     for i = 1:input.n[l]
       probs = pdf.(normals, input.data[l][i]) .* jumps
@@ -377,7 +378,19 @@ function updatewgroupcluslabels!(
         state.childrenallocatedatoms[l].counter[sampledidx] += 1
       else
         # The sampled atom is a new atom.
-        allocatechildrenatom!(state, l, sampledidx - nalloc)
+        # First, sample the clustering label for the newly allocated atom.
+        motherjumps = getalljumps(state)
+        mothernormals = getatomcenterednormals(state, model)
+        probs =
+          pdf.(
+            mothernormals,
+            state.childrennonallocatedatoms[l].locations[sampledidx-nalloc],
+          ) .* motherjumps
+        probs = probs ./ sum(probs)
+        atomlabel = rand(Categorical(probs))
+
+        # Then, allocate the atom with the sampled clustering label.
+        allocatechildrenatom!(state, l, sampledidx - nalloc, atomlabel)
         nalloc += 1
         state.wgroupcluslabels[l][i] = nalloc
       end
