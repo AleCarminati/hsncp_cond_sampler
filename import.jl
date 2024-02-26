@@ -7,6 +7,7 @@ using Roots
 using SpecialFunctions
 using ProgressBars
 using RCall
+using Plots
 
 include("models.jl")
 include("data_structures.jl")
