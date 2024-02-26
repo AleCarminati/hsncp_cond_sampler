@@ -164,7 +164,7 @@ function allocatemotheratom!(state::MCMCState, j)
 
   # Remove all the information of the selected atom from the list of non
   # allocated atoms.
-  jump, location, _ = deleteat!(state.mothernonallocatedatoms, j)
+  jump, location, _ = deleteatatomcont!(state.mothernonallocatedatoms, j)
 
   # Add the selected atom to the list of non allocated atoms.
   pushatomcont!(state.motherallocatedatoms, jump, location, 1)

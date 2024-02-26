@@ -381,6 +381,7 @@ function updatewgroupcluslabels!(
         # First, sample the clustering label for the newly allocated atom.
         motherjumps = getalljumps(state)
         mothernormals = getatomcenterednormals(state, model)
+        mothernalloc = size(state.motherallocatedatoms.jumps)[1]
         probs =
           pdf.(
             mothernormals,
@@ -388,6 +389,13 @@ function updatewgroupcluslabels!(
           ) .* motherjumps
         probs = probs ./ sum(probs)
         atomlabel = rand(Categorical(probs))
+
+        # If the sampled clustering label refers to a non allocated mother atom,
+        # allocate that atom, and adjust the clustering label.
+        if atomlabel > mothernalloc
+          allocatemotheratom!(state, atomlabel - mothernalloc)
+          atomlabel = mothernalloc + 1
+        end
 
         # Then, allocate the atom with the sampled clustering label.
         allocatechildrenatom!(state, l, sampledidx - nalloc, atomlabel)
