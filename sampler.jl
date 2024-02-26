@@ -443,7 +443,7 @@ function hsncpmixturemodel_fit(
 
   output = MCMCOutput(iterations, input.g, input.n, model)
 
-  for it = 1:(burnin+iterations*thin)
+  for it in ProgressBar(1:(burnin+iterations*thin))
     updatemotherprocess!(state, model)
 
     updatechildprocesses!(input, state, model)

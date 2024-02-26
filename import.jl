@@ -5,6 +5,7 @@ using StatsBase
 using Distributions
 using Roots
 using SpecialFunctions
+using ProgressBars
 
 include("models.jl")
 include("data_structures.jl")
