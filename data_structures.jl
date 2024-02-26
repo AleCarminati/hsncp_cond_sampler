@@ -106,6 +106,16 @@ function deallocatechildrenatom!(state::MCMCState, l, h)
   # Add the selected atom to the list of non allocated atoms.
   pushatomcont!(state.childrennonallocatedatoms[l], jump, location, 0)
 
+  # Get the index of the corresponding mother process atom.
+  idxmotheratom = state.childrenatomslabels[l][h]
+  # Decrease the counter of the corresponding mother process atom.
+  state.motherallocatedatoms.counter[idxmotheratom] -= 1
+  # If the corresponding mother process atom does not have any associated
+  # child processes' atoms, deallocate it.
+  if state.motherallocatedatoms.counter[idxmotheratom] == 0
+    deallocatemotheratom!(state, idxmotheratom)
+  end
+
   # Remove the clustering label for the selected atom. Indeed, the state does
   # not contain clustering labels for non allocated atoms.
   deleteat!(state.childrenatomslabels[l], h)
@@ -121,8 +131,8 @@ function allocatechildrenatom!(state::MCMCState, l, h, atomlabel)
   #= This function adds the h-indexed non allocated atom of the child process
     of group l to the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency.
-    This function does not change the clustering labels, it just initializes the
-    counter of the selected atom to 1. =#
+    This function does not change the clustering labels and it initializes the
+    counter of the selected atom to 0. =#
 
   # Remove all the information of the selected atom from the list of non
   # allocated atoms.
@@ -130,6 +140,9 @@ function allocatechildrenatom!(state::MCMCState, l, h, atomlabel)
 
   # Add the clustering label for the selected atom.
   push!(state.childrenatomslabels[l], atomlabel)
+
+  # Increase the counter of the corresponding mother process atom.
+  state.motherallocatedatoms.counter[atomlabel] += 1
 
   # Add the selected atom to the list of non allocated atoms.
   pushatomcont!(state.childrenallocatedatoms[l], jump, location, 1)
@@ -159,15 +172,15 @@ function allocatemotheratom!(state::MCMCState, j)
   #= This function adds the j-indexed non allocated atom of the mother process
     to the list of allocated atoms. It also modifies the other elements of the
     state to maintain coherency.
-    This function does not change the clustering labels, it just initializes the
-    counter of the selected atom to 1. =#
+    This function does not change the clustering labels and it initializes the
+    counter of the selected atom to 0. =#
 
   # Remove all the information of the selected atom from the list of non
   # allocated atoms.
   jump, location, _ = deleteatatomcont!(state.mothernonallocatedatoms, j)
 
   # Add the selected atom to the list of non allocated atoms.
-  pushatomcont!(state.motherallocatedatoms, jump, location, 1)
+  pushatomcont!(state.motherallocatedatoms, jump, location, 0)
 end
 
 struct MCMCOutput

@@ -339,6 +339,7 @@ function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
         # The sampled atom is a new atom.
         allocatemotheratom!(state, sampledidx - nalloc)
         nalloc += 1
+        state.motherallocatedatoms.counter[nalloc] = 1
         state.childrenatomslabels[l][i] = nalloc
       end
 
@@ -400,6 +401,7 @@ function updatewgroupcluslabels!(
         # Then, allocate the atom with the sampled clustering label.
         allocatechildrenatom!(state, l, sampledidx - nalloc, atomlabel)
         nalloc += 1
+        state.childrenallocatedatoms[l].counter[nalloc] = 1
         state.wgroupcluslabels[l][i] = nalloc
       end
 
