@@ -12,4 +12,13 @@ model = NormalMeanModel(1, 1, 1, 1, 1)
 
 output =
   hsncpmixturemodel_fit(input, model; iterations = 5, burnin = 5, thin = 1)
-print(output)
+
+# Concat the sampled across-group clustering labels in each group.
+clus = hcat(output.agroupcluslabels...)
+
+@rput clus
+
+R"library(salso)"
+R"bestclust = salso(clus)"
+
+@rget bestclust
