@@ -185,16 +185,14 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
       map(
         y ->
           transpose(state.childrenatomslabels[y] .== x) *
-          state.childrenallocatedatoms[y].jumps,
+          vcat(state.childrenallocatedatoms[y].locations...),
         Vector(1:g),
       ),
     ),
     1:size(state.motherallocatedatoms.jumps)[1],
   )
 
-  means =
-    sums ./ (model.kernelsd) .^ (2 .* state.motherallocatedatoms.counter) .*
-    standevs .^ 2
+  means = sums ./ (model.kernelsd^2) .* standevs .^ 2
 
   normals = Normal.(means, standevs)
 
