@@ -3,6 +3,7 @@
 using Random
 using StatsBase
 using Distributions
+using LogExpFunctions
 using Roots
 using SpecialFunctions
 using ProgressBars

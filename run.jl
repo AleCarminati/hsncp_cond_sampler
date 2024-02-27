@@ -10,7 +10,7 @@ trueclust = [rand(1:3, 50) for l = 1:g]
 data = [rand.(components[trueclust[l]]) for l = 1:g]
 input = MCMCInput(data)
 
-model = NormalMeanModel(1, 1, 1, 1, 1)
+model = NormalMeanModel(1, 1, 0.5, 1, 1)
 
 output = hsncpmixturemodel_fit(
   input,
@@ -29,9 +29,6 @@ R"library(salso)"
 R"bestclust = salso(clus)"
 
 @rget bestclust
-
-p1 = scatter(vcat(data...), fill(2, 150), color = vcat(trueclust...))
-p2 = scatter(vcat(data...), fill(1, 150), color = bestclust)
 
 savefig(
   scatter(

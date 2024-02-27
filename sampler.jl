@@ -322,11 +322,12 @@ function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
   nalloc = size(state.motherallocatedatoms.jumps)[1]
   for l = 1:g
     for i = 1:size(state.childrenallocatedatoms[l].locations)[1]
-      probs =
-        pdf.(normals, state.childrenallocatedatoms[l].locations[i]) .* jumps
-      probs = probs ./ sum(probs)
+      logprobs =
+        logpdf.(normals, state.childrenallocatedatoms[l].locations[i]) .+
+        log.(jumps)
+      logprobs = logprobs .- logsumexp(logprobs)
 
-      sampledidx = rand(Categorical(probs))
+      sampledidx = rand(Categorical(exp.(logprobs)))
 
       # Save the old clustering label of the atom.
       oldidx = state.childrenatomslabels[l][i]
@@ -365,10 +366,10 @@ function updatewgroupcluslabels!(
     normals = getatomcenterednormals(state, model, group = l)
     nalloc = size(state.childrenallocatedatoms[l].jumps)[1]
     for i = 1:input.n[l]
-      probs = pdf.(normals, input.data[l][i]) .* jumps
-      probs = probs ./ sum(probs)
+      logprobs = logpdf.(normals, input.data[l][i]) .+ log.(jumps)
+      logprobs = logprobs .- logsumexp(logprobs)
 
-      sampledidx = rand(Categorical(probs))
+      sampledidx = rand(Categorical(exp.(logprobs)))
 
       # Save the old clustering label of the atom.
       oldidx = state.wgroupcluslabels[l][i]
@@ -383,13 +384,13 @@ function updatewgroupcluslabels!(
         motherjumps = getalljumps(state)
         mothernormals = getatomcenterednormals(state, model)
         mothernalloc = size(state.motherallocatedatoms.jumps)[1]
-        probs =
-          pdf.(
+        logprobs =
+          logpdf.(
             mothernormals,
             state.childrennonallocatedatoms[l].locations[sampledidx-nalloc],
           ) .* motherjumps
-        probs = probs ./ sum(probs)
-        atomlabel = rand(Categorical(probs))
+        logprobs = logprobs .- logsumexp(logprobs)
+        atomlabel = rand(Categorical(exp.(logprobs)))
 
         # If the sampled clustering label refers to a non allocated mother atom,
         # allocate that atom, and adjust the clustering label.
