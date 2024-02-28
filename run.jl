@@ -1,14 +1,13 @@
 include("import.jl")
 
 # Set the seed for reproducibility of the experiments.
-seed = 23478747247
 Random.seed!(seed)
 
 g = 3
-n = [50, 50, 50]
-components = Normal.([-5, 0, 5], [1, 1, 1])
+components = [Normal.([-5, 0, 5], [1, 1, 1]) for l = 1:g]
+components = [SkewNormal.([-5, 0, 5], [4, 4, 4], [50, 50, 50]) for l = 1:g]
 trueclust = [rand(1:3, n[l]) for l = 1:g]
-data = [rand.(components[trueclust[l]]) for l = 1:g]
+data = [rand.(components[l][trueclust[l]]) for l = 1:g]
 input = MCMCInput(data)
 
 model = NormalMeanModel(1, 1, 1, 1, 1)
@@ -31,13 +30,17 @@ R"bestclust = salso(clus)"
 
 @rget bestclust
 
-ticksvalues = vcat(0:0.5:((g-1)*0.5), ((g+1)*0.5):0.5:g)
+distancetrueest = 1
+interval = 0.25
+ticksvalues = vcat(
+  0:interval:((g-1)*interval),
+  (distancetrueest+(g-1)*interval):interval:(distancetrueest+(g-1)*2*interval),
+)
 tickslabels =
   vcat("Estimated - group " .* string.(1:g), "True - group " .* string.(1:g))
 
-yvalues = vcat([fill((l - 1) * 0.5, n[l]) for l = 1:g]...)
-yvalues =
-  vcat(yvalues, [fill(((g + 1) * 0.5) + (l - 1) * 0.5, n[l]) for l = 1:g]...)
+yvalues = vcat(fill.(ticksvalues[1:g], n)...)
+yvalues = vcat(yvalues, fill.(ticksvalues[g+1:2*g], n)...)
 
 savefig(
   scatter(
