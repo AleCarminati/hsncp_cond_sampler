@@ -1,11 +1,13 @@
 include("import.jl")
 
 # Set the seed for reproducibility of the experiments.
+seed = 232342343
 Random.seed!(seed)
 
 g = 3
 components = [Normal.([-5, 0, 5], [1, 1, 1]) for l = 1:g]
 components = [SkewNormal.([-5, 0, 5], [4, 4, 4], [50, 50, 50]) for l = 1:g]
+n = [100, 100, 100]
 trueclust = [rand(1:3, n[l]) for l = 1:g]
 data = [rand.(components[l][trueclust[l]]) for l = 1:g]
 input = MCMCInput(data)
