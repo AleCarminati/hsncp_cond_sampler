@@ -94,6 +94,22 @@ function getalljumps(state::MCMCState; group = nothing)
   end
 end
 
+function getalllocs(state::MCMCState; group = nothing)
+  # Returns a vector containing all the locations of the child process (if
+  # group is specified) or the mother process (if group is not specified).
+  if group == nothing
+    return vcat(
+      state.motherallocatedatoms.locations,
+      state.mothernonallocatedatoms.locations,
+    )
+  else
+    return vcat(
+      state.childrenallocatedatoms[group].locations,
+      state.childrennonallocatedatoms[group].locations,
+    )
+  end
+end
+
 function deallocatechildrenatom!(state::MCMCState, l, h)
   #= This function removes the h-indexed allocated atom of the child process
     of group l from the list of allocated atoms. It also modifies the other
@@ -194,7 +210,7 @@ struct MCMCOutput
   # for each observation.
   agroupcluslabels::Array{Array{Integer}}
 
-  function MCMCOutput(iterations, g, n, model::NormalMeanModel)
+  function MCMCOutput(iterations, g, n, model::GammaCRMModel)
     new(
       [zeros(iterations, n[l], 1) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
