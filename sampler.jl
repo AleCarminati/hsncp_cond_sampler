@@ -1,10 +1,114 @@
 # This file contains the functions to run the conditional sampler for the
 # HSNCP mixture model.
 
+function getatomcenterednormals(
+  state::MCMCState,
+  model::GammaCRMModel;
+  group = nothing,
+)
+  #= This function returns a vector of Normal distributions.
+    - group not specified: it returns Normal kernels centered in the means in
+      the mother process' atoms, with variance equal to the variance in the
+      mother process' atoms.
+    - group specified: it returns Normal mixture components centered in the
+      locations of the specified group child process' atoms. =#
+
+  means = getprocessmeans(state, model, group = group, onlyalloc = false)
+  vars = getprocessvars(state, model, group = group, onlyalloc = false)
+
+  return Normal.(means, sqrt.(vars))
+end
+
+function getprocessvars(
+  state::MCMCState,
+  model::NormalMeanModel;
+  group = nothing,
+  onlyalloc = true,
+)
+  #= Function that returns a vector filled with the variance of the kernel
+    (group = nothing) or the variance of the mixture Gaussian (group = l).
+    The length of the vector matches the number of atoms considered, based
+    on the combination of group and onlyalloc. =#
+  if group == nothing
+    var = model.kernelsd^2
+    length = size(state.motherallocatedatoms.jumps)[1]
+    if !onlyalloc
+      length += size(state.mothernonallocatedatoms.jumps)[1]
+    end
+  else
+    var = model.mixturecompsd^2
+    length = size(state.childrenallocatedatoms[group].jumps)[1]
+    if !onlyalloc
+      length += size(state.childrennonallocatedatoms[group].jumps)[1]
+    end
+  end
+
+  return fill(var, length)
+end
+
+function getprocessvars(
+  state::MCMCState,
+  model::NormalMeanVarModel;
+  group = nothing,
+  onlyalloc = true,
+)
+  #= Function that returns a vector containing the variances that are saved in
+    the atoms of the mother (group = nothing) or the child (group = l) process.
+    If onlyalloc = true, it returns a vector containing the variances that are
+    saved only in the allocated atoms of the mother process.
+    With certain models, the variances are fixed: in that case it returns a
+    vector containing the fixed value with length equal to the number of
+    considered atoms. =#
+  if group == nothing
+    vars = map(x -> x[2], state.motherallocatedatoms.locations)
+    if !onlyalloc
+      vars = vcat(vars, map(x -> x[2], state.mothernonallocatedatoms.locations))
+    end
+  else
+    length = size(state.childrenallocatedatoms[group].jumps)[1]
+    if !onlyalloc
+      length += size(state.childrennonallocatedatoms[group].jumps)[1]
+    end
+    vars = fill(model.mixturecompsd^2, length)
+  end
+  return vars
+end
+
+function getprocessmeans(
+  state::MCMCState,
+  model::GammaCRMModel;
+  group = nothing,
+  onlyalloc = true,
+)
+  #= Function that returns a vector containing the means that are saved in the
+    atoms of the mother (group = nothing) or the child (group = l) process.
+    If onlyalloc = true, it returns a vector containing the means that are
+    saved only in the allocated atoms.
+    Note that this function only makes sense within the GammaCRMModel,
+    therefore we use as input also this model to avoid using this function
+    with other models. =#
+  if group == nothing
+    means = map(x -> x[1], state.motherallocatedatoms.locations)
+    if !onlyalloc
+      means =
+        vcat(means, map(x -> x[1], state.mothernonallocatedatoms.locations))
+    end
+  else
+    means = map(x -> x[1], state.childrenallocatedatoms[group].locations)
+    if !onlyalloc
+      means = vcat(
+        means,
+        map(x -> x[1], state.childrennonallocatedatoms[group].locations),
+      )
+    end
+  end
+  return means
+end
+
 function initalizemcmcstate!(
   input::MCMCInput,
   state::MCMCState,
-  model::NormalMeanModel,
+  model::GammaCRMModel,
 )
   # The number of atoms to sample for the mother process and for each child
   # process.
@@ -13,8 +117,7 @@ function initalizemcmcstate!(
 
   # Sample the atoms of the mother process.
   motheratomsjumps = rand(Distributions.Gamma(1, 1), mothernatoms)
-  motheratomslocations =
-    rand.(fill(Distributions.Normal(0, model.motherlocsd), mothernatoms), 1)
+  motheratomslocations = samplepriormotherloc(model, mothernatoms)
 
   # Contains the frequency of the sampled labels for the mother process.
   motherfreq = zeros(mothernatoms)
@@ -29,14 +132,9 @@ function initalizemcmcstate!(
     childatomsjumps = rand(Distributions.Gamma(1, 1), childnatoms)
     # For each atom of the child process, sample its location based on
     # the associated atom of the mother process.
+
     childatomslocations =
-      rand.(
-        Distributions.Normal.(
-          motheratomsjumps[tempmotherlabels],
-          model.kernelsd,
-        ),
-        1,
-      )
+      samplechildloc(model, motheratomslocations[tempmotherlabels])
 
     #= The sampled labels go from 1 to childnatoms, while the labels of the
       state should go from 1 to the number of allocated atoms of the child
@@ -123,38 +221,53 @@ function updatemotherprocess!(state::MCMCState, model::Model)
   updatemotherprocessnonalloc!(state, model)
 end
 
-function getatomcenterednormals(
-  state::MCMCState,
-  model::NormalMeanModel;
-  group = nothing,
-)
-  #= This function returns a vector of Normal distributions.
-    - group not specified: it returns Normal kernels centered in the locations
-      of the mother process' atoms.
-    - group specified: it returns Normal mixture components centered in the
-      locations of the specified group child process' atoms. =#
-
-  if group == nothing
-    allocatedatomscontainer = state.motherallocatedatoms
-    nonallocatedatomscontainer = state.mothernonallocatedatoms
-    sd = model.kernelsd
-  else
-    allocatedatomscontainer = state.childrenallocatedatoms[group]
-    nonallocatedatomscontainer = state.childrennonallocatedatoms[group]
-    sd = model.mixturecompsd
-  end
-  # We use vcat() to flatten the locations because they are vectors of
-  # 1-dimensional vectors.
-  locations = vcat(
-    vcat(allocatedatomscontainer.locations...),
-    vcat(nonallocatedatomscontainer.locations...),
-  )
-  return Normal.(locations, fill(sd, size(locations)[1]))
-end
-
 function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   # First, sample the jumps.
+  updatemotherprocessallocjumps!(state, model)
 
+  # Then, sample the locations.
+  updatemotherprocessallocmeans!(state, model)
+end
+
+function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanVarModel)
+  # First, sample the jumps.
+  updatemotherprocessallocjumps!(state, model)
+
+  # Then, sample the locations.
+  updatemotherprocessallocmeans!(state, model)
+
+  shapes = model.motherlocshape .+ state.motherallocatedatoms.counter ./ 2
+
+  # For each allocated atom j of the mother process, compute the sum of the
+  # squared differences between atoms of the child processes that are associated
+  # with j and the mean value for the atom j.
+  sums = map(
+    x -> sum(
+      map(
+        y ->
+          transpose(state.childrenatomslabels[y] .== x) *
+          (
+            getprocessmeans(state, model, group = y, onlyalloc = true) .-
+            state.motherallocatedatoms.locations[x][1]
+          ) .^ 2,
+        Vector(1:g),
+      ),
+    ),
+    1:size(state.motherallocatedatoms.jumps)[1],
+  )
+
+  scales = model.motherlocscale .+ sums ./ 2
+
+  igammas = InverseGamma.(shapes, scales)
+
+  for i = 1:size(state.motherallocatedatoms.locations)[1]
+    state.motherallocatedatoms.locations[i][2] = rand(igammas[i])
+  end
+end
+
+function updatemotherprocessallocjumps!(state::MCMCState, model::GammaCRMModel)
+  # Function that samples the jumps for the allocated atoms of the mother
+  # process.
   g = size(state.childrenallocatedatoms)[1]
   shape = state.motherallocatedatoms.counter
   rate = 1 + model.childrentotalmass * sum(log.(1 .+ state.auxu))
@@ -167,14 +280,17 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   gammas = Gamma.(shape, 1 ./ rate)
 
   state.motherallocatedatoms.jumps[:] = rand.(gammas)
+end
 
-  # Then, sample the locations.
+function updatemotherprocessallocmeans!(state::MCMCState, model::GammaCRMModel)
+  g = size(state.childrenallocatedatoms)[1]
 
   standevs =
     sqrt.(
       1 ./ (
         1 / model.motherlocsd^2 .+
-        state.motherallocatedatoms.counter ./ model.kernelsd^2
+        state.motherallocatedatoms.counter ./
+        getprocessvars(state, model, group = nothing, onlyalloc = true)
       )
     )
 
@@ -185,23 +301,25 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
       map(
         y ->
           transpose(state.childrenatomslabels[y] .== x) *
-          vcat(state.childrenallocatedatoms[y].locations...),
+          getprocessmeans(state, model, group = y, onlyalloc = true),
         Vector(1:g),
       ),
     ),
     1:size(state.motherallocatedatoms.jumps)[1],
   )
 
-  means = sums ./ (model.kernelsd^2) .* standevs .^ 2
+  means =
+    sums ./ getprocessvars(state, model, group = nothing, onlyalloc = true) .*
+    standevs .^ 2
 
   normals = Normal.(means, standevs)
 
-  state.motherallocatedatoms.locations[:] = rand.(normals, 1)
+  for i = 1:size(state.motherallocatedatoms.locations)[1]
+    state.motherallocatedatoms.locations[i][1] = rand(normals[i])
+  end
 end
 
-function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
-  g = size(state.childrenallocatedatoms)[1]
-
+function updatemotherprocessnonalloc!(state::MCMCState, model::GammaCRMModel)
   f =
     x ->
       model.mothertotalmass *
@@ -210,13 +328,7 @@ function updatemotherprocessnonalloc!(state::MCMCState, model::NormalMeanModel)
   state.mothernonallocatedatoms.jumps = fergusonklass(f, 0.1)
 
   state.mothernonallocatedatoms.locations =
-    rand.(
-      fill(
-        Normal(0, model.motherlocsd),
-        size(state.mothernonallocatedatoms.jumps)[1],
-      ),
-      1,
-    )
+    samplepriormotherloc(model, size(state.mothernonallocatedatoms.jumps)[1])
 
   state.mothernonallocatedatoms.counter =
     zeros(size(state.mothernonallocatedatoms.jumps)[1])
@@ -235,14 +347,11 @@ end
 function updatechildprocessalloc!(
   input::MCMCInput,
   state::MCMCState,
-  model::NormalMeanModel,
+  model::GammaCRMModel,
   l,
 )
-  g = size(state.auxu)[1]
-  nallocatoms = size(state.childrenallocatedatoms[l].jumps)[1]
 
   # First, sample the jumps.
-
   shape = state.childrenallocatedatoms[l].counter
   rate = fill(1 + state.auxu[l], size(shape)[1])
 
@@ -251,15 +360,21 @@ function updatechildprocessalloc!(
   state.childrenallocatedatoms[l].jumps[:] = rand.(gammas)
 
   # Then, sample the locations.
+  motheratommean =
+    getprocessmeans(state, model, group = nothing, onlyalloc = true)
+  motheratomvar =
+    getprocessvars(state, model, group = nothing, onlyalloc = true)
+  childrenatomvar = getprocessvars(state, model, group = l, onlyalloc = true)
 
   standevs =
     sqrt.(
       1.0 ./ (
-        1 / model.kernelsd^2 .+
-        state.childrenallocatedatoms[l].counter ./ model.mixturecompsd^2
+        1 ./ motheratomvar[state.childrenatomslabels[l]] .+
+        state.childrenallocatedatoms[l].counter ./ childrenatomvar
       )
     )
 
+  nallocatoms = size(state.childrenallocatedatoms[l].jumps)[1]
   # For each allocated atom of the child process, compute the sum of the
   # observations associated with it.
   sums = map(
@@ -267,14 +382,10 @@ function updatechildprocessalloc!(
     Vector(1:nallocatoms),
   )
 
-  #= Note that the locations vector is a vector of one-dimensional vectors
-    because this is a univariate model. Therefore, to do the computations we
-    have to flatten the vector of vectors. =#
   means =
     standevs .^ 2 .* (
-      vcat(
-        state.motherallocatedatoms.locations[state.childrenatomslabels[l]]...,
-      ) ./ model.kernelsd^2 .+ sums ./ model.mixturecompsd^2
+      (motheratommean./motheratomvar)[state.childrenatomslabels[l]] .+
+      sums ./ childrenatomvar
     )
 
   normals = Normal.(means, standevs)
@@ -282,11 +393,7 @@ function updatechildprocessalloc!(
   state.childrenallocatedatoms[l].locations[:] = rand.(normals, 1)
 end
 
-function updatechildprocessnonalloc!(
-  state::MCMCState,
-  model::NormalMeanModel,
-  l,
-)
+function updatechildprocessnonalloc!(state::MCMCState, model::GammaCRMModel, l)
   f = x -> model.childrentotalmass * gamma(0, x * (1 + state.auxu[l]))
 
   state.childrennonallocatedatoms[l].jumps = fergusonklass(f, 0.1)
@@ -300,23 +407,21 @@ function updatechildprocessnonalloc!(
     Categorical(weights),
     size(state.childrennonallocatedatoms[l].jumps)[1],
   )
-  # Then, set up the distribution of the child process' atoms based on the
-  # Gaussian kernels centered in the associated atom of the mother process.
-  normals = getatomcenterednormals(state, model)[associations]
 
-  # Eventually, sample the locations, using the distributions created in the
-  # last lines.
-  state.childrennonallocatedatoms[l].locations = rand.(normals, 1)
+  motheratomslocations = getalllocs(state)
+
+  state.childrennonallocatedatoms[l].locations =
+    samplechildloc(model, motheratomslocations[associations])
 
   state.childrennonallocatedatoms[l].counter =
     zeros(size(state.childrennonallocatedatoms[l].jumps)[1])
 end
 
-function updatechildrenatomslabels!(state::MCMCState, model::NormalMeanModel)
+function updatechildrenatomslabels!(state::MCMCState, model::GammaCRMModel)
   g = size(state.auxu)[1]
 
   jumps = getalljumps(state)
-  normals = getatomcenterednormals(state, model)
+  normals = getatomcenterednormals(state, model, group = nothing)
   nalloc = size(state.motherallocatedatoms.jumps)[1]
   for l = 1:g
     for i = 1:size(state.childrenallocatedatoms[l].locations)[1]
@@ -356,7 +461,7 @@ end
 
 function updatewgroupcluslabels!(
   state::MCMCState,
-  model::NormalMeanModel,
+  model::GammaCRMModel,
   input::MCMCInput,
 )
   for l = 1:input.g
@@ -380,7 +485,7 @@ function updatewgroupcluslabels!(
         # The sampled atom is a new atom.
         # First, sample the clustering label for the newly allocated atom.
         motherjumps = getalljumps(state)
-        mothernormals = getatomcenterednormals(state, model)
+        mothernormals = getatomcenterednormals(state, model, group = nothing)
         mothernalloc = size(state.motherallocatedatoms.jumps)[1]
         logprobs =
           logpdf.(
