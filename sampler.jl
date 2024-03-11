@@ -257,7 +257,6 @@ function updatemixtparams!(
       ),
     )
   state.mixtparams[1] = rand(InverseGamma(postshape, postscale))
-  print("\n$postshape $postscale\n")
 end
 
 function updatemotherprocess!(state::MCMCState, model::Model)
