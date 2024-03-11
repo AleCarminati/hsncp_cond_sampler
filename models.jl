@@ -44,6 +44,10 @@ function samplechildloc(model::NormalMeanModel, associatedmotheratomloc)
   )
 end
 
+function samplepriormixtparams(model::NormalMeanModel)
+  return []
+end
+
 @kwdef struct NormalMeanVarModel <: GammaCRMModel
   #=
       - Gaussian mixture components:
@@ -88,4 +92,60 @@ function samplechildloc(model::NormalMeanVarModel, associatedmotheratomloc)
   # Function that samples the location of the children atoms based on its
   # associated mother atoms.
   return map(x -> rand(Normal(x[1], x[2]), 1), associatedmotheratomloc)
+end
+
+function samplepriormixtparams(model::NormalMeanVarModel)
+  return []
+end
+
+@kwdef struct NormalMeanVarVarModel <: GammaCRMModel
+  #=
+      - Gaussian mixture components:
+        - variance with a inverse gamma prior;
+        - random mean.
+      - Child processes: Gamma CRM with fixed total mass, for the locations we
+        use a Gaussian kernel with variance given by the second element of the
+        mother process atom's location.
+      - Mother process: Gamma CRM with fixed total mass, for the locations we
+        use a Gaussian with fixed variance and an inverse gamma with fixed shape
+        and scale.
+    =#
+
+  # Hyperparameters for the Inverse Gamma prior for the variance of the mixture
+  # component.
+  mixtshape::Real
+  mixtscale::Real
+
+  # Total mass for the Gamma CRM of the child processes.
+  childrentotalmass::Real
+
+  # Hyperparameters for the Gamma CRM of the mother process.
+  mothertotalmass::Real
+  motherlocsd::Real
+  motherlocshape::Real
+  motherlocscale::Real
+end
+
+function samplepriormotherloc(model::NormalMeanVarVarModel, n)
+  # Function that samples n locations from the prior of the mother process.
+  return map(
+    x -> rand.(x),
+    fill(
+      [
+        Normal(0, model.motherlocsd),
+        InverseGamma(model.motherlocshape, model.motherlocscale),
+      ],
+      n,
+    ),
+  )
+end
+
+function samplechildloc(model::NormalMeanVarVarModel, associatedmotheratomloc)
+  # Function that samples the location of the children atoms based on its
+  # associated mother atoms.
+  return map(x -> rand(Normal(x[1], x[2]), 1), associatedmotheratomloc)
+end
+
+function samplepriormixtparams(model::NormalMeanVarVarModel)
+  return rand(InverseGamma(model.mixtshape, model.mixtscale), 1)
 end

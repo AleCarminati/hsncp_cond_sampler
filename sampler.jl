@@ -48,7 +48,7 @@ end
 
 function getprocessvars(
   state::MCMCState,
-  model::NormalMeanVarModel;
+  model::Union{NormalMeanVarModel,NormalMeanVarVarModel};
   group = nothing,
   onlyalloc = true,
 )
@@ -69,7 +69,7 @@ function getprocessvars(
     if !onlyalloc
       length += size(state.childrennonallocatedatoms[group].jumps)[1]
     end
-    vars = fill(model.mixturecompsd^2, length)
+    vars = fill(getmixtvar(state, model), length)
   end
   return vars
 end
@@ -105,11 +105,26 @@ function getprocessmeans(
   return means
 end
 
+function getmixtvar(
+  state::MCMCState,
+  model::Union{NormalMeanModel,NormalMeanVarModel},
+)
+  # Function that returns the value of the variance of the mixture component.
+  return model.mixturecompsd^2
+end
+
+function getmixtvar(state::MCMCState, model::NormalMeanVarVarModel)
+  # Function that returns the value of the variance of the mixture component.
+  return state.mixtparams[1]
+end
+
 function initalizemcmcstate!(
   input::MCMCInput,
   state::MCMCState,
   model::GammaCRMModel,
 )
+  state.mixtparams = samplepriormixtparams(model)
+
   # The number of atoms to sample for the mother process and for each child
   # process.
   mothernatoms = 10
@@ -214,6 +229,37 @@ function initalizemcmcstate!(
   state.mothernonallocatedatoms.counter = zeros(size(mothernonallocatomsidx)[1])
 end
 
+function updatemixtparams!(
+  input::MCMCInput,
+  state::MCMCState,
+  model::Union{NormalMeanModel,NormalMeanVarModel},
+)
+  return nothing
+end
+
+function updatemixtparams!(
+  input::MCMCInput,
+  state::MCMCState,
+  model::NormalMeanVarVarModel,
+)
+  postshape = model.mixtshape + sum(input.n) / 2
+  postscale =
+    model.mixtscale +
+    1 / 2 * sum(
+      map(
+        l -> sum(
+          (
+            input.data[l] .-
+            getprocessmeans(state, model, group = l, onlyalloc = true)[state.wgroupcluslabels[l]]
+          ) .^ 2,
+        ),
+        Vector(1:input.g),
+      ),
+    )
+  state.mixtparams[1] = rand(InverseGamma(postshape, postscale))
+  print("\n$postshape $postscale\n")
+end
+
 function updatemotherprocess!(state::MCMCState, model::Model)
   # Update the allocated atoms of the mother process.
   updatemotherprocessalloc!(state, model)
@@ -229,7 +275,10 @@ function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
   updatemotherprocessallocmeans!(state, model)
 end
 
-function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanVarModel)
+function updatemotherprocessalloc!(
+  state::MCMCState,
+  model::Union{NormalMeanVarModel,NormalMeanVarVarModel},
+)
   # First, sample the jumps.
   updatemotherprocessallocjumps!(state, model)
 
@@ -550,6 +599,8 @@ function hsncpmixturemodel_fit(
   output = MCMCOutput(iterations, input.g, input.n, model)
 
   for it in ProgressBar(1:(burnin+iterations*thin))
+    updatemixtparams!(input, state, model)
+
     updatemotherprocess!(state, model)
 
     updatechildprocesses!(input, state, model)

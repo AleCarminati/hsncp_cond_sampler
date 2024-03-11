@@ -44,6 +44,8 @@ function pushatomcont!(atoms::AtomsContainer, jump, location, counter)
 end
 
 mutable struct MCMCState
+  # A vector containing all the parameters of the mixture function.
+  mixtparams::Vector{Real}
   # A vector containing, for each group, the auxiliary variable called u_l.
   const auxu::Vector{Real}
   # A vector containing the within-group clustering labels for each observation.
@@ -67,6 +69,7 @@ mutable struct MCMCState
 
   function MCMCState(g, n)
     new(
+      Real[],
       zeros(g),
       [zeros(n[l]) for l = 1:g],
       [Integer[] for _ = 1:g],
