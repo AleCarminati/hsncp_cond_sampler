@@ -9,6 +9,7 @@ using SpecialFunctions
 using ProgressBars
 using RCall
 using Plots
+using LaTeXStrings
 
 include("models.jl")
 include("data_structures.jl")

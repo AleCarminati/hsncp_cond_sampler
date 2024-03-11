@@ -585,13 +585,49 @@ function updateauxu!(state::MCMCState, input::MCMCInput)
   state.auxu[:] = rand.(gammas)
 end
 
+function getprediction(state::MCMCState, model::GammaCRMModel, grid)
+  f = x -> model.childrentotalmass * gamma(0, x)
+  newjumps = fergusonklass(f, 1e-6)
+  # We normalize the jumps to obtain a NRMI.
+  newjumps = newjumps ./ sum(newjumps)
+  natoms = size(newjumps)[1]
+  allocations = rand(1:size(getalljumps(state, group = nothing))[1], natoms)
+  newlocs =
+    rand.(getatomcenterednormals(state, model, group = nothing)[allocations])
+  newchildnormals = Normal.(newlocs, sqrt.(getmixtvar(state, model)))
+  #= Each time the function inside map is called, it returns a vector (which is
+    a column vector by default) with same length as grid, then hcat puts
+    together all these column in a matrix, with number of rows equal to the
+    number of points in the grid and number of columns equal to the number of
+    sampled locations. This matrix is multiplied with the column vector of the
+    sampled jumps, to obtain a vector with length equal to the length of the
+    grid. =#
+  #=
+  print("\n")
+  print(getmixtvar(state, model))
+  print("\n")
+  print("\n$newlocs\n$newjumps\n")
+  exit()
+  =#
+  return hcat(map(x -> pdf.(x, grid), newchildnormals)...) * newjumps
+end
+
 function hsncpmixturemodel_fit(
   input::MCMCInput,
   model::Model;
+  grid = nothing,
   iterations = iterations,
   burnin = burnin,
   thin = thin,
 )
+  # If not specified, initialize the grid to contain all the data points.
+  if grid == nothing
+    mindata = minimum([minimum(input.data[l]) for l = 1:input.g])
+    maxdata = maximum([maximum(input.data[l]) for l = 1:input.g])
+    grid = LinRange(mindata, maxdata, 1000)
+  end
+  prediction = zeros(iterations, size(grid)[1])
+
   state = MCMCState(input.g, input.n)
   initalizemcmcstate!(input, state, model)
 
@@ -612,8 +648,10 @@ function hsncpmixturemodel_fit(
 
     if it > burnin && mod(it, thin) == 0
       updatemcmcoutput!(input, state, output, Int((it - burnin) / thin))
+      prediction[Int((it - burnin) / thin), :] =
+        getprediction(state, model, grid)
     end
   end
 
-  return output
+  return output, prediction
 end
