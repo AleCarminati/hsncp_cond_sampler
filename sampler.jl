@@ -585,31 +585,42 @@ function updateauxu!(state::MCMCState, input::MCMCInput)
   state.auxu[:] = rand.(gammas)
 end
 
-function getprediction(state::MCMCState, model::GammaCRMModel, grid)
-  f = x -> model.childrentotalmass * gamma(0, x)
-  newjumps = fergusonklass(f, 1e-6)
-  # We normalize the jumps to obtain a NRMI.
-  newjumps = newjumps ./ sum(newjumps)
-  natoms = size(newjumps)[1]
-  allocations = rand(1:size(getalljumps(state, group = nothing))[1], natoms)
-  newlocs =
-    rand.(getatomcenterednormals(state, model, group = nothing)[allocations])
-  newchildnormals = Normal.(newlocs, sqrt.(getmixtvar(state, model)))
-  #= Each time the function inside map is called, it returns a vector (which is
-    a column vector by default) with same length as grid, then hcat puts
-    together all these column in a matrix, with number of rows equal to the
-    number of points in the grid and number of columns equal to the number of
-    sampled locations. This matrix is multiplied with the column vector of the
-    sampled jumps, to obtain a vector with length equal to the length of the
-    grid. =#
-  #=
-  print("\n")
-  print(getmixtvar(state, model))
-  print("\n")
-  print("\n$newlocs\n$newjumps\n")
-  exit()
-  =#
-  return hcat(map(x -> pdf.(x, grid), newchildnormals)...) * newjumps
+function updateprediction!(
+  state::MCMCState,
+  model::GammaCRMModel,
+  prediction,
+  grid,
+  idx::Integer,
+)
+  g = size(prediction)[1] - 1
+
+  # Compute the density predictions for the input groups.
+  for l = 1:g
+    jumps = getalljumps(state, group = l)
+    jumps = jumps ./ sum(jumps)
+    normals = getatomcenterednormals(state, model, group = l)
+    #= Each time the function inside map is called, it returns a vector (which
+      is a column vector by default) with same length as grid, then hcat puts
+      together all these column in a matrix, with number of rows equal to the
+      number of points in the grid and number of columns equal to the number of
+      sampled locations. This matrix is multiplied with the column vector of the
+      sampled jumps, to obtain a vector with length equal to the length of the
+      grid. =#
+    prediction[l][idx, :] = hcat(map(x -> pdf.(x, grid), normals)...) * jumps
+  end
+
+  # Compute the density predictions for a new groups.
+  jumps = getalljumps(state, group = nothing)
+  jumps = jumps ./ sum(jumps)
+  normals =
+    Normal.(
+      getprocessmeans(state, model, group = nothing, onlyalloc = false),
+      sqrt.(
+        getprocessvars(state, model, group = nothing, onlyalloc = false) +
+        fill(getmixtvar(state, model), size(jumps)[1])
+      ),
+    )
+  prediction[g+1][idx, :] = hcat(map(x -> pdf.(x, grid), normals)...) * jumps
 end
 
 function hsncpmixturemodel_fit(
@@ -626,7 +637,7 @@ function hsncpmixturemodel_fit(
     maxdata = maximum([maximum(input.data[l]) for l = 1:input.g])
     grid = LinRange(mindata, maxdata, 1000)
   end
-  prediction = zeros(iterations, size(grid)[1])
+  prediction = [zeros(iterations, size(grid)[1]) for l = 1:(input.g+1)]
 
   state = MCMCState(input.g, input.n)
   initalizemcmcstate!(input, state, model)
@@ -648,8 +659,13 @@ function hsncpmixturemodel_fit(
 
     if it > burnin && mod(it, thin) == 0
       updatemcmcoutput!(input, state, output, Int((it - burnin) / thin))
-      prediction[Int((it - burnin) / thin), :] =
-        getprediction(state, model, grid)
+      updateprediction!(
+        state,
+        model,
+        prediction,
+        grid,
+        Int((it - burnin) / thin),
+      )
     end
   end
 
