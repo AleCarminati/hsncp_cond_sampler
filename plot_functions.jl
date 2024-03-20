@@ -56,9 +56,10 @@ function plotdensitypredictions(
       plots,
       histogram(
         input.data[l],
-        normalize = :pdf,
+        normalize = :probability,
         color = :lightblue,
         label = nothing,
+        bins = 12,
       ),
     )
     plot!(
