@@ -14,4 +14,5 @@ using LaTeXStrings
 include("models.jl")
 include("data_structures.jl")
 include("ferguson_klass.jl")
+include("plot_functions.jl")
 include("sampler.jl")
