@@ -203,6 +203,9 @@ function allocatemotheratom!(state::MCMCState, j)
 end
 
 struct MCMCOutput
+  # A matrix containing, for each iteration,  all the parameters of the mixture
+  # function.
+  mixtparams::Array{Real}
   # A matrix containing, for each iteration, the mixture component parameter's
   # values for each observation.
   cluslocations::Array{Array{Real}}
@@ -215,6 +218,7 @@ struct MCMCOutput
 
   function MCMCOutput(iterations, g, n, model::GammaCRMModel)
     new(
+      zeros(iterations, 1),
       [zeros(iterations, n[l], 1) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
@@ -231,6 +235,12 @@ function updatemcmcoutput!(
   for l = 1:input.g
     # We use deepcopy because by default Julia copies only the reference to
     # data, but the state will change at each iteration.
+
+    # Save the mixture parameters only when there are some non-fixed mixture
+    # parameters.
+    if size(state.mixtparams)[1] > 0
+      output.mixtparams[idx, :] = deepcopy(state.mixtparams)
+    end
 
     # Copy the within-group clustering labels from the state.
     output.wgroupcluslabels[l][idx, :] = deepcopy(state.wgroupcluslabels[l])

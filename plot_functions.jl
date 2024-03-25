@@ -49,6 +49,13 @@ function plotdensitypredictions(
   prediction,
   filename,
 )
+  #= Creates a grid of plots:
+    - For each group, it plots the predictive density for a new data point in
+      that group, the density that generated data in that group and an histogram
+      of data in that group.
+    - It plots the predictive density for a new data point in a new group.
+    =#
+
   plots = []
 
   for l = 1:(input.g)
@@ -88,4 +95,10 @@ function plotdensitypredictions(
   )
 
   savefig(plot(plots...), filename)
+end
+
+function plottrace(values, filename)
+  # Creates a traceplot.
+
+  savefig(plot(values, size = (1500, 700), legend = false), filename)
 end
