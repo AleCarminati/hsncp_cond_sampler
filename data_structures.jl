@@ -215,6 +215,9 @@ struct MCMCOutput
   # A matrix containing, for each iteration, the across-group clustering label
   # for each observation.
   agroupcluslabels::Array{Array{Integer}}
+  # A vector containing, for each iteration, the allocated atoms of the mother
+  # process.
+  motherallocatedatoms::Vector{AtomsContainer}
 
   function MCMCOutput(iterations, g, n, model::GammaCRMModel)
     new(
@@ -222,6 +225,7 @@ struct MCMCOutput
       [zeros(iterations, n[l], 1) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
+      [AtomsContainer() for it = 1:iterations],
     )
   end
 end
@@ -259,5 +263,7 @@ function updatemcmcoutput!(
     # clustering labels.
     output.agroupcluslabels[l][idx, :] =
       deepcopy(state.childrenatomslabels[l][state.wgroupcluslabels[l]])
+
+    output.motherallocatedatoms[idx] = deepcopy(state.motherallocatedatoms)
   end
 end

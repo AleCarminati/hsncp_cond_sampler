@@ -97,8 +97,64 @@ function plotdensitypredictions(
   savefig(plot(plots...), filename)
 end
 
-function plottrace(values, filename)
-  # Creates a traceplot.
+function atomsvalues(atomsvector, model::GammaCRMModel; value = "jump")
+  #= Helper function that, given a vector of AtomsContainer, returns, for each
+    atom, a vector containing its values. If the atom is not allocated in that
+    a certain iteration, it returns the "missing" value. =#
 
-  savefig(plot(values, size = (1500, 700), legend = false), filename)
+  niterations = size(atomsvector)[1]
+  vecmaxatoms = map(x -> size(x.jumps)[1], atomsvector)
+  natoms = maximum(vecmaxatoms)
+
+  if value == "jump"
+    values = map(
+      y -> map(
+        x -> y <= vecmaxatoms[x] ? atomsvector[x].jumps[y] : missing,
+        1:niterations,
+      ),
+      1:natoms,
+    )
+  elseif value == "counter"
+    values = map(
+      y -> map(
+        x -> y <= vecmaxatoms[x] ? atomsvector[x].counter[y] : missing,
+        1:niterations,
+      ),
+      1:natoms,
+    )
+  elseif value == "mean"
+    values = map(
+      y -> map(
+        x -> y <= vecmaxatoms[x] ? atomsvector[x].locations[y][1] : missing,
+        1:niterations,
+      ),
+      1:natoms,
+    )
+  elseif value == "var"
+    values = map(
+      y -> map(
+        x -> y <= vecmaxatoms[x] ? atomsvector[x].locations[y][2] : missing,
+        1:niterations,
+      ),
+      1:natoms,
+    )
+  else
+    error("Invalid value: '$input_string'")
+  end
+
+  return values
+end
+
+function plottrace(values, filename; iterations = nothing)
+  #= Creates a traceplot. To have multiple traces, provide a vector of vectors
+    in input.
+    Optional arguments:
+    - Iterations: a vector of vectors that, for each trace, represents the
+      iterations where that trace must be plotted.
+  =#
+
+  savefig(
+    plot(iterations, values, size = (1500, 700), legend = false),
+    filename,
+  )
 end
