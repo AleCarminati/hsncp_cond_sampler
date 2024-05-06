@@ -19,16 +19,21 @@ function getatomcenterednormals(
   return Normal.(means, sqrt.(vars))
 end
 
+function getprocessvars end
+#= Returns a vector filled with the variance of the kernel (group = nothing) or
+  the variance of the mixture Gaussian (group = l).
+  The length of the vector matches the number of atoms considered, based
+  on the combination of group and onlyalloc.
+  With certain models, the variances are fixed: in that case it returns a
+  vector containing the fixed value with length equal to the number of
+  considered atoms. =#
+
 function getprocessvars(
   state::MCMCState,
   model::NormalMeanModel;
   group = nothing,
   onlyalloc = true,
 )
-  #= Function that returns a vector filled with the variance of the kernel
-    (group = nothing) or the variance of the mixture Gaussian (group = l).
-    The length of the vector matches the number of atoms considered, based
-    on the combination of group and onlyalloc. =#
   if group == nothing
     var = model.kernelsd^2
     length = size(state.motherallocatedatoms.jumps)[1]
@@ -52,13 +57,6 @@ function getprocessvars(
   group = nothing,
   onlyalloc = true,
 )
-  #= Function that returns a vector containing the variances that are saved in
-    the atoms of the mother (group = nothing) or the child (group = l) process.
-    If onlyalloc = true, it returns a vector containing the variances that are
-    saved only in the allocated atoms of the mother process.
-    With certain models, the variances are fixed: in that case it returns a
-    vector containing the fixed value with length equal to the number of
-    considered atoms. =#
   if group == nothing
     vars = map(x -> x[2], state.motherallocatedatoms.locations)
     if !onlyalloc
@@ -105,16 +103,17 @@ function getprocessmeans(
   return means
 end
 
+function getmixtvar end
+# Returns the value of the variance of the mixture component.
+
 function getmixtvar(
   state::MCMCState,
   model::Union{NormalMeanModel,NormalMeanVarModel},
 )
-  # Function that returns the value of the variance of the mixture component.
   return model.mixturecompsd^2
 end
 
 function getmixtvar(state::MCMCState, model::NormalMeanVarVarModel)
-  # Function that returns the value of the variance of the mixture component.
   return state.mixtparams[1]
 end
 

@@ -3,6 +3,16 @@
 
 abstract type Model end
 
+function samplepriormotherloc end
+# Samples n locations from the prior of the mother process.
+
+function samplechildloc end
+# Samples the location of the children atoms based on its associated mother
+# atoms.
+
+function samplepriormixtparams end
+# Samples from the prior of the mixture parameters.
+
 abstract type GammaCRMModel <: Model end
 
 @kwdef struct NormalMeanModel <: GammaCRMModel
@@ -31,13 +41,10 @@ abstract type GammaCRMModel <: Model end
 end
 
 function samplepriormotherloc(model::NormalMeanModel, n)
-  # Function that samples n locations from the prior of the mother process.
   return rand.(fill(Normal(0, model.motherlocsd), n), 1)
 end
 
 function samplechildloc(model::NormalMeanModel, associatedmotheratomloc)
-  # Function that samples the location of the children atoms based on its
-  # associated mother atoms.
   return map(
     x -> rand(Normal(x[1], model.kernelsd), 1),
     associatedmotheratomloc,
@@ -75,7 +82,6 @@ end
 end
 
 function samplepriormotherloc(model::NormalMeanVarModel, n)
-  # Function that samples n locations from the prior of the mother process.
   return map(
     x -> rand.(x),
     fill(
@@ -89,8 +95,6 @@ function samplepriormotherloc(model::NormalMeanVarModel, n)
 end
 
 function samplechildloc(model::NormalMeanVarModel, associatedmotheratomloc)
-  # Function that samples the location of the children atoms based on its
-  # associated mother atoms.
   return map(x -> rand(Normal(x[1], x[2]), 1), associatedmotheratomloc)
 end
 
@@ -127,7 +131,6 @@ end
 end
 
 function samplepriormotherloc(model::NormalMeanVarVarModel, n)
-  # Function that samples n locations from the prior of the mother process.
   return map(
     x -> rand.(x),
     fill(
@@ -141,8 +144,6 @@ function samplepriormotherloc(model::NormalMeanVarVarModel, n)
 end
 
 function samplechildloc(model::NormalMeanVarVarModel, associatedmotheratomloc)
-  # Function that samples the location of the children atoms based on its
-  # associated mother atoms.
   return map(x -> rand(Normal(x[1], x[2]), 1), associatedmotheratomloc)
 end
 
