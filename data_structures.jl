@@ -17,7 +17,7 @@ end
 
 mutable struct AtomsContainer
   jumps::Vector{Real}
-  locations::Vector{Array{Real}}
+  locations::Vector{Vector{Real}}
   # Count how many atoms (or observations) are linked to this atoms through the
   # clustering labels.
   counter::Vector{Integer}
@@ -203,17 +203,18 @@ function allocatemotheratom!(state::MCMCState, j)
 end
 
 struct MCMCOutput
-  # A matrix containing, for each iteration,  all the parameters of the mixture
-  # function.
-  mixtparams::Array{Real}
-  # A matrix containing, for each iteration, the mixture component parameter's
-  # values for each observation.
-  cluslocations::Array{Array{Real}}
-  # A matrix containing, for each iteration, the within-group clustering label
-  # for each observation.
-  wgroupcluslabels::Array{Array{Integer}}
-  # A matrix containing, for each iteration, the across-group clustering label
-  # for each observation.
+  # A (iterations, n_mixtparams) matrix containing, for each iteration,
+  # all the parameters of the mixture function.
+  mixtparams::Matrix{Real}
+  # A g-length vector of (iterations, n_l, dim_childloc) arrays containing, for
+  # each iteration, the mixture component parameter's values for each
+  # observation.
+  cluslocations::Vector{Array{Real}}
+  # A g-length vector of (iterations, n_l) containing, for each iteration, the
+  # within-group clustering label for each observation.
+  wgroupcluslabels::Vector{Matrix{Integer}}
+  # A g-length vector of (iterations, n_l) containing, for each iteration, the
+  # within-group clustering label for each observation.
   agroupcluslabels::Array{Array{Integer}}
   # A vector containing, for each iteration, the allocated atoms of the mother
   # process.
@@ -236,16 +237,16 @@ function updatemcmcoutput!(
   output::MCMCOutput,
   idx::Integer,
 )
+  # We use deepcopy because by default Julia copies only the reference to
+  # data, but the state will change at each iteration.
+
+  # Save the mixture parameters only when there are some non-fixed mixture
+  # parameters.
+  if size(state.mixtparams)[1] > 0
+    output.mixtparams[idx, :] = deepcopy(state.mixtparams)
+  end
+
   for l = 1:input.g
-    # We use deepcopy because by default Julia copies only the reference to
-    # data, but the state will change at each iteration.
-
-    # Save the mixture parameters only when there are some non-fixed mixture
-    # parameters.
-    if size(state.mixtparams)[1] > 0
-      output.mixtparams[idx, :] = deepcopy(state.mixtparams)
-    end
-
     # Copy the within-group clustering labels from the state.
     output.wgroupcluslabels[l][idx, :] = deepcopy(state.wgroupcluslabels[l])
 
