@@ -27,17 +27,17 @@ abstract type GammaCRMModel <: Model end
   	=#
 
   # Standard deviation of the Gaussian mixture components.
-  mixturecompsd::Real
+  mixturecompsd::Float64
 
   # Total mass for the Gamma CRM of the child processes.
-  childrentotalmass::Real
+  childrentotalmass::Float64
 
   # Standard deviation of the Gaussian kernel.
-  kernelsd::Real
+  kernelsd::Float64
 
   # Hyperparameters for the Gamma CRM of the mother process.
-  mothertotalmass::Real
-  motherlocsd::Real
+  mothertotalmass::Float64
+  motherlocsd::Float64
 end
 
 function samplepriormotherloc(model::NormalMeanModel, n)
@@ -69,16 +69,16 @@ end
     =#
 
   # Standard deviation of the Gaussian mixture components.
-  mixturecompsd::Real
+  mixturecompsd::Float64
 
   # Total mass for the Gamma CRM of the child processes.
-  childrentotalmass::Real
+  childrentotalmass::Float64
 
   # Hyperparameters for the Gamma CRM of the mother process.
-  mothertotalmass::Real
-  motherlocsd::Real
-  motherlocshape::Real
-  motherlocscale::Real
+  mothertotalmass::Float64
+  motherlocsd::Float64
+  motherlocshape::Float64
+  motherlocscale::Float64
 end
 
 function samplepriormotherloc(model::NormalMeanVarModel, n)
@@ -117,17 +117,17 @@ end
 
   # Hyperparameters for the Inverse Gamma prior for the variance of the mixture
   # component.
-  mixtshape::Real
-  mixtscale::Real
+  mixtshape::Float64
+  mixtscale::Float64
 
   # Total mass for the Gamma CRM of the child processes.
-  childrentotalmass::Real
+  childrentotalmass::Float64
 
   # Hyperparameters for the Gamma CRM of the mother process.
-  mothertotalmass::Real
-  motherlocsd::Real
-  motherlocshape::Real
-  motherlocscale::Real
+  mothertotalmass::Float64
+  motherlocsd::Float64
+  motherlocshape::Float64
+  motherlocscale::Float64
 end
 
 function samplepriormotherloc(model::NormalMeanVarVarModel, n)

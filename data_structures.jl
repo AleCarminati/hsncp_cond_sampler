@@ -6,9 +6,9 @@ struct MCMCInput
   # A vector containing, for each group, the corresponding observations.
   data::Vector{Vector{Float64}}
   # A vector containing the number of observations in each group.
-  n::Vector{Integer}
+  n::Vector{Int32}
   # The number of groups.
-  g::Integer
+  g::Int32
 
   function MCMCInput(data)
     return new(data, [size(data[l])[1] for l = 1:size(data)[1]], size(data)[1])
@@ -20,10 +20,10 @@ mutable struct AtomsContainer
   locations::Vector{Vector{Float64}}
   # Count how many atoms (or observations) are linked to this atoms through the
   # clustering labels.
-  counter::Vector{Integer}
+  counter::Vector{Int32}
 
   function AtomsContainer()
-    new(Float64[], Float64[], Integer[])
+    new(Float64[], Float64[], Int32[])
   end
 end
 
@@ -49,10 +49,10 @@ mutable struct MCMCState
   # A vector containing, for each group, the auxiliary variable called u_l.
   const auxu::Vector{Float64}
   # A vector containing the within-group clustering labels for each observation.
-  const wgroupcluslabels::Vector{Vector{Integer}}
+  const wgroupcluslabels::Vector{Vector{Int32}}
   # A vector containing, for each group, the clustering labels for each
   # allocated atom of the child process.
-  childrenatomslabels::Vector{Vector{Integer}}
+  childrenatomslabels::Vector{Vector{Int32}}
   #= A vector containing, for each group, the allocated atoms of the children
   process. A atom is allocated if it is linked to at least one observation
   through the clustering labels. =#
@@ -72,7 +72,7 @@ mutable struct MCMCState
       Float64[],
       zeros(g),
       [zeros(n[l]) for l = 1:g],
-      [Integer[] for _ = 1:g],
+      [Int32[] for _ = 1:g],
       [AtomsContainer() for _ = 1:g],
       [AtomsContainer() for _ = 1:g],
       AtomsContainer(),
@@ -184,7 +184,8 @@ function deallocatemotheratom!(state::MCMCState, j)
     the corresponding index in the vector of the children atoms clustering
     labels. We use the map() function because this operation must be repeated
     for every group. =#
-  state.childrenatomslabels = map(x -> x .- (x .> j), state.childrenatomslabels)
+  state.childrenatomslabels =
+    map(x -> @.(x - (x > j)), state.childrenatomslabels)
 end
 
 function allocatemotheratom!(state::MCMCState, j)
@@ -212,10 +213,10 @@ struct MCMCOutput
   cluslocations::Vector{Array{Float64}}
   # A g-length vector of (iterations, n_l) containing, for each iteration, the
   # within-group clustering label for each observation.
-  wgroupcluslabels::Vector{Matrix{Integer}}
+  wgroupcluslabels::Vector{Matrix{Int32}}
   # A g-length vector of (iterations, n_l) containing, for each iteration, the
   # within-group clustering label for each observation.
-  agroupcluslabels::Array{Array{Integer}}
+  agroupcluslabels::Array{Array{Int32}}
   # A vector containing, for each iteration, the allocated atoms of the mother
   # process.
   motherallocatedatoms::Vector{AtomsContainer}
