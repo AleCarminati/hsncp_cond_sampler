@@ -4,7 +4,7 @@
 # Structure that contains the input of the MCMC.
 struct MCMCInput
   # A vector containing, for each group, the corresponding observations.
-  data::Vector{Vector{Real}}
+  data::Vector{Vector{Float64}}
   # A vector containing the number of observations in each group.
   n::Vector{Integer}
   # The number of groups.
@@ -16,14 +16,14 @@ struct MCMCInput
 end
 
 mutable struct AtomsContainer
-  jumps::Vector{Real}
-  locations::Vector{Vector{Real}}
+  jumps::Vector{Float64}
+  locations::Vector{Vector{Float64}}
   # Count how many atoms (or observations) are linked to this atoms through the
   # clustering labels.
   counter::Vector{Integer}
 
   function AtomsContainer()
-    new(Real[], Real[], Integer[])
+    new(Float64[], Float64[], Integer[])
   end
 end
 
@@ -45,9 +45,9 @@ end
 
 mutable struct MCMCState
   # A vector containing all the parameters of the mixture function.
-  mixtparams::Vector{Real}
+  mixtparams::Vector{Float64}
   # A vector containing, for each group, the auxiliary variable called u_l.
-  const auxu::Vector{Real}
+  const auxu::Vector{Float64}
   # A vector containing the within-group clustering labels for each observation.
   const wgroupcluslabels::Vector{Vector{Integer}}
   # A vector containing, for each group, the clustering labels for each
@@ -69,7 +69,7 @@ mutable struct MCMCState
 
   function MCMCState(g, n)
     new(
-      Real[],
+      Float64[],
       zeros(g),
       [zeros(n[l]) for l = 1:g],
       [Integer[] for _ = 1:g],
@@ -205,11 +205,11 @@ end
 struct MCMCOutput
   # A (iterations, n_mixtparams) matrix containing, for each iteration,
   # all the parameters of the mixture function.
-  mixtparams::Matrix{Real}
+  mixtparams::Matrix{Float64}
   # A g-length vector of (iterations, n_l, dim_childloc) arrays containing, for
   # each iteration, the mixture component parameter's values for each
   # observation.
-  cluslocations::Vector{Array{Real}}
+  cluslocations::Vector{Array{Float64}}
   # A g-length vector of (iterations, n_l) containing, for each iteration, the
   # within-group clustering label for each observation.
   wgroupcluslabels::Vector{Matrix{Integer}}

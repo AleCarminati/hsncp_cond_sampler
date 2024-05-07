@@ -4,7 +4,7 @@
 function fergusonklass(func, epsilon)
   # func must be a univariate function that returns the integral of the jump
   # part of the Lévy intensity from x to +infinity, where x is func's input.
-  output = Real[]
+  output = Float64[]
   expdist = Exponential(1)
 
   # The value of the last sample of the auxiliary variable.
