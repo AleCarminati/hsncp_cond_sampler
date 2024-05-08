@@ -81,19 +81,6 @@ end
   motherlocscale::Float64
 end
 
-function samplepriormotherloc(model::NormalMeanVarModel, n)
-  return map(
-    x -> rand.(x),
-    fill(
-      [
-        Normal(0, model.motherlocsd),
-        InverseGamma(model.motherlocshape, model.motherlocscale),
-      ],
-      n,
-    ),
-  )
-end
-
 function samplechildloc(model::NormalMeanVarModel, associatedmotheratomloc)
   return map(x -> rand(Normal(x[1], x[2]), 1), associatedmotheratomloc)
 end
@@ -130,17 +117,17 @@ end
   motherlocscale::Float64
 end
 
-function samplepriormotherloc(model::NormalMeanVarVarModel, n)
-  return map(
-    x -> rand.(x),
-    fill(
-      [
-        Normal(0, model.motherlocsd),
-        InverseGamma(model.motherlocshape, model.motherlocscale),
-      ],
-      n,
-    ),
-  )
+function samplepriormotherloc(
+  model::Union{NormalMeanVarModel,NormalMeanVarVarModel},
+  n,
+)
+  returnvec = [zeros(2) for _ = 1:n]
+  for idx = 1:n
+    returnvec[idx][1] = rand(Normal(0, model.motherlocsd))
+    returnvec[idx][2] =
+      rand(InverseGamma(model.motherlocshape, model.motherlocscale))
+  end
+  return returnvec
 end
 
 function samplechildloc(model::NormalMeanVarVarModel, associatedmotheratomloc)

@@ -291,13 +291,14 @@ function updatemotherprocessalloc!(
   sums = map(
     x -> sum(
       map(
-        y ->
-          transpose(state.childrenatomslabels[y] .== x) * @.(
+        y -> sum(
+          @.(
             (
-              $getprocessmeans(state, model, group = y, onlyalloc = true) -
+              $getprocessmeans(state, model, group = y, onlyalloc = true)[state.childrenatomslabels[y]==x] -
               state.motherallocatedatoms.locations[x][1]
             )^2
-          ),
+          )
+        ),
         Vector(1:g),
       ),
     ),
