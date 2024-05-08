@@ -653,7 +653,7 @@ function hsncpmixturemodel_fit(
 
     updateauxu!(state, input)
 
-    if it > burnin && mod(it, thin) == 0
+    if it > burnin && mod(it - burnin, thin) == 0
       updatemcmcoutput!(input, state, output, Int((it - burnin) / thin))
       updateprediction!(
         state,
