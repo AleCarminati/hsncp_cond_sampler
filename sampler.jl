@@ -466,43 +466,93 @@ end
 function updatechildrenatomslabels!(state::MCMCState, model::GammaCRMModel)
   g = size(state.auxu)[1]
 
-  jumps = getalljumps(state)
+  jumps = getalljumps(state, group = nothing)
   normals = getatomcenterednormals(state, model, group = nothing)
   nalloc = size(state.motherallocatedatoms.jumps)[1]
   for l = 1:g
-    for i = 1:size(state.childrenallocatedatoms[l].locations)[1]
-      logprobs =
-        @. logpdf(normals, state.childrenallocatedatoms[l].locations[i]) +
-           log(jumps)
-      logprobs = logprobs .- logsumexp(logprobs)
-
-      sampledidx = rand(Categorical(exp.(logprobs)))
-
-      # Save the old clustering label of the atom.
-      oldidx = state.childrenatomslabels[l][i]
-
-      if sampledidx <= nalloc
-        # The sampled atom is already an allocated atom.
-        state.childrenatomslabels[l][i] = sampledidx
-        state.motherallocatedatoms.counter[sampledidx] += 1
-      else
-        # The sampled atom is a new atom.
-        allocatemotheratom!(state, sampledidx - nalloc)
-        nalloc += 1
-        state.motherallocatedatoms.counter[nalloc] = 1
-        state.childrenatomslabels[l][i] = nalloc
-      end
-
-      state.motherallocatedatoms.counter[oldidx] -= 1
-      # If the children atom was the only one associated with a certain atom
-      # of the mother process, remove the latter from the list of allocated
-      # atoms.
-      if state.motherallocatedatoms.counter[oldidx] == 0
-        deallocatemotheratom!(state, oldidx)
-        nalloc -= 1
-      end
+    for h = 1:size(state.childrenallocatedatoms[l].locations)[1]
+      nalloc = updatesinglechildrenatomlabel!(
+        state,
+        model,
+        jumps,
+        normals,
+        nalloc,
+        l,
+        h,
+        true,
+      )
     end
   end
+end
+
+function updatesinglechildrenatomlabel!(
+  state::MCMCState,
+  model::GammaCRMModel,
+  jumps,
+  normals,
+  nalloc,
+  l,
+  h,
+  wasallocated,
+)
+  #= Updates a single child process atom label.
+  Input:
+  - jumps: all the jumps of the mother process.
+  - normals: all the normals distributions derived by the mother process
+    locations.
+  - nalloc: the number of allocated mother process atoms.
+  - l: the index of the group.
+  - h: the index of the children atom. If the children atom is not allocated,
+    h must be the index w.r.t. the list of unallocated children atoms.
+  - wasallocated: if the children atom, before this update, was already an
+    allocated atom or not.
+
+  jumps and normals are modified inside the function to remain coherent with
+  possible updates of the mother atoms. nalloc is an integer, therefore its
+  value cannot be modified inside the function, but must be returned.
+  =#
+  if wasallocated
+    childatomloc = state.childrenallocatedatoms[l].locations[h]
+
+    # Save the old clustering label of the atom.
+    oldidx = state.childrenatomslabels[l][h]
+
+    state.motherallocatedatoms.counter[oldidx] -= 1
+    # If the children atom was the only one associated with a certain atom
+    # of the mother process, remove the latter from the list of allocated
+    # atoms.
+    if state.motherallocatedatoms.counter[oldidx] == 0
+      deallocatemotheratom!(state, oldidx)
+      nalloc -= 1
+      moveinplace!(jumps, oldidx, size(jumps)[1])
+      moveinplace!(normals, oldidx, size(jumps)[1])
+    end
+  else
+    childatomloc = state.childrennonallocatedatoms[l].locations[h]
+  end
+
+  logprobs = @. logpdf(normals, childatomloc) + log(jumps)
+  logprobs = logprobs .- logsumexp(logprobs)
+
+  sampledidx = rand(Categorical(exp.(logprobs)))
+
+  if sampledidx > nalloc
+    # The sampled atom is a new atom.
+    allocatemotheratom!(state, sampledidx - nalloc)
+    nalloc += 1
+    sampledidx = nalloc
+    moveinplace!(jumps, sampledidx, nalloc)
+    moveinplace!(normals, sampledidx, nalloc)
+  end
+
+  if wasallocated
+    state.childrenatomslabels[l][h] = sampledidx
+    state.motherallocatedatoms.counter[sampledidx] += 1
+  else
+    allocatechildrenatom!(state, l, h, sampledidx)
+  end
+
+  return nalloc
 end
 
 function updatewgroupcluslabels!(
@@ -523,36 +573,26 @@ function updatewgroupcluslabels!(
       # Save the old clustering label of the atom.
       oldidx = state.wgroupcluslabels[l][i]
 
-      if sampledidx <= nalloc
-        # The sampled atom is already an allocated atom.
-        state.wgroupcluslabels[l][i] = sampledidx
-        state.childrenallocatedatoms[l].counter[sampledidx] += 1
-      else
-        # The sampled atom is a new atom.
-        # First, sample the clustering label for the newly allocated atom.
+      if sampledidx > nalloc
+        # The sampled atom is a non allocated atom. We have to sample its label.
         motherjumps = getalljumps(state)
         mothernormals = getatomcenterednormals(state, model, group = nothing)
         mothernalloc = size(state.motherallocatedatoms.jumps)[1]
-        logprobs = @. logpdf(
+        updatesinglechildrenatomlabel!(
+          state,
+          model,
+          motherjumps,
           mothernormals,
-          state.childrennonallocatedatoms[l].locations[sampledidx-nalloc],
-        ) * motherjumps
-        logprobs = logprobs .- logsumexp(logprobs)
-        atomlabel = rand(Categorical(exp.(logprobs)))
-
-        # If the sampled clustering label refers to a non allocated mother atom,
-        # allocate that atom, and adjust the clustering label.
-        if atomlabel > mothernalloc
-          allocatemotheratom!(state, atomlabel - mothernalloc)
-          atomlabel = mothernalloc + 1
-        end
-
-        # Then, allocate the atom with the sampled clustering label.
-        allocatechildrenatom!(state, l, sampledidx - nalloc, atomlabel)
+          mothernalloc,
+          l,
+          sampledidx - nalloc,
+          false,
+        )
         nalloc += 1
-        state.childrenallocatedatoms[l].counter[nalloc] = 1
-        state.wgroupcluslabels[l][i] = nalloc
+        sampledidx = nalloc
       end
+      state.wgroupcluslabels[l][i] = sampledidx
+      state.childrenallocatedatoms[l].counter[sampledidx] += 1
 
       state.childrenallocatedatoms[l].counter[oldidx] -= 1
       # If the observation was the only one associated with a certain atom
