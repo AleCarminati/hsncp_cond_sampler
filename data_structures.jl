@@ -1,6 +1,25 @@
 # This file contains all the data structures that are used in the sampler and
 # their auxiliary functions.
 
+function moveinplace!(vec, startidx, endidx)
+  # Moves the element at index startidx of vector vec to index endidx.
+  # Performs this move efficiently, avoiding allocations.
+
+  signmove = sign(endidx - startidx)
+
+  if signmove != 0
+    temp = vec[startidx]
+
+    for idx = startidx:signmove:(endidx-signmove)
+      vec[idx] = vec[idx+signmove]
+    end
+
+    vec[endidx] = temp
+  end
+
+  return nothing
+end
+
 # Structure that contains the input of the MCMC.
 struct MCMCInput
   # A vector containing, for each group, the corresponding observations.
@@ -150,8 +169,8 @@ function allocatechildrenatom!(state::MCMCState, l, h, atomlabel)
   #= This function adds the h-indexed non allocated atom of the child process
     of group l to the list of allocated atoms. It also modifies the other
     elements of the state to maintain coherency.
-    This function does not change the clustering labels and it initializes the
-    counter of the selected atom to 0. =#
+    This function does not change the within group clustering labels and it
+    initializes the counter of the selected atom to 0. =#
 
   # Remove all the information of the selected atom from the list of non
   # allocated atoms.
@@ -163,8 +182,8 @@ function allocatechildrenatom!(state::MCMCState, l, h, atomlabel)
   # Increase the counter of the corresponding mother process atom.
   state.motherallocatedatoms.counter[atomlabel] += 1
 
-  # Add the selected atom to the list of non allocated atoms.
-  pushatomcont!(state.childrenallocatedatoms[l], jump, location, 1)
+  # Add the selected atom to the list of allocated atoms.
+  pushatomcont!(state.childrenallocatedatoms[l], jump, location, 0)
 end
 
 function deallocatemotheratom!(state::MCMCState, j)
