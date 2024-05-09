@@ -137,10 +137,10 @@ function getalllocs(state::MCMCState; group = nothing)
 end
 
 function deallocateatom!(state::MCMCState, idx; group = nothing)
-  #= This function removes the allocated atom with index idx of the child
-    process (if group is specified) or the mother process (if group is not
-    specified) from the list of the allocated atoms. It also modifies the other
-    elements of the state to maintain coherency. =#
+  #= Removes the allocated atom with index idx of the child process (if group
+    is specified) or the mother process (if group is not specified) from the
+    list of the allocated atoms. It also modifies the other elements of the
+    state to maintain coherency. =#
 
   allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
 
@@ -153,10 +153,9 @@ function deallocateatom!(state::MCMCState, idx; group = nothing)
     the corresponding index in the vector of the children atoms clustering
     labels.=#
   if group == nothing
-    # We use the map() function because this operation must be repeated
-    # for every group.
-    state.childrenatomslabels =
-      map(x -> @.(x - (x > idx)), state.childrenatomslabels)
+    for l in eachindex(state.childrenatomslabels)
+      state.childrenatomslabels[l] .-= (state.childrenatomslabels[l] .> idx)
+    end
   else
     # Maintain coherence with labels and counters of the mother process.
     # Get the index of the corresponding mother process atom.
@@ -173,7 +172,7 @@ function deallocateatom!(state::MCMCState, idx; group = nothing)
     # not contain clustering labels for non allocated atoms.
     deleteat!(state.childrenatomslabels[group], idx)
 
-    state.wgroupcluslabels[group] -= (state.wgroupcluslabels[group] .> idx)
+    state.wgroupcluslabels[group] .-= (state.wgroupcluslabels[group] .> idx)
   end
 end
 

@@ -158,6 +158,7 @@ function initalizemcmcstate!(
 
     # Compute the frequency of the sampled labels.
     childfreq = StatsBase.counts(tempchildlabels, childnatoms)
+
     # Extract the indexes of the atoms that have not been allocated.
     nonallocatomsidx = (1:childnatoms)[childfreq.==0]
     # Extract the indexes of the atoms that have been allocated.
@@ -209,9 +210,10 @@ function initalizemcmcstate!(
     the correct cluster labels for the child processes' atoms (from 1 to the
     number of allocated atoms of the mother process).
     Then, for each group, apply the function to the sampled labels vector. =#
-  obtaincluslabel = x -> findall(motherallocatomsidx .== x)[1]
+  obtaincluslabel = x -> findfirst(motherallocatomsidx .== x)
   state.childrenatomslabels =
     map(l -> map(obtaincluslabel, state.childrenatomslabels[l]), 1:input.g)
+
   # Select the jumps and the locations of the allocated mother process' atoms.
   state.motherallocatedatoms.jumps = motheratomsjumps[motherallocatomsidx]
   state.motherallocatedatoms.locations =
@@ -277,6 +279,8 @@ function updatemotherprocessalloc!(
   state::MCMCState,
   model::Union{NormalMeanVarModel,NormalMeanVarVarModel},
 )
+  g = size(state.wgroupcluslabels)[1]
+
   # First, sample the jumps.
   updatemotherprocessallocjumps!(state, model)
 
@@ -471,7 +475,8 @@ function updatechildrenatomslabels!(state::MCMCState, model::GammaCRMModel)
   nalloc = size(state.motherallocatedatoms.jumps)[1]
   for l = 1:g
     for h = 1:size(state.childrenallocatedatoms[l].locations)[1]
-      nalloc = updatesinglechildrenatomlabel!(
+      nalloc = updatesingleatomlabel!(
+        input,
         state,
         model,
         jumps,
@@ -479,56 +484,82 @@ function updatechildrenatomslabels!(state::MCMCState, model::GammaCRMModel)
         nalloc,
         l,
         h,
+        false,
         true,
       )
     end
   end
 end
 
-function updatesinglechildrenatomlabel!(
+function updatesingleatomlabel!(
+  input::MCMCInput,
   state::MCMCState,
   model::GammaCRMModel,
   jumps,
   normals,
   nalloc,
   l,
-  h,
+  idx,
+  wgroup,
   wasallocated,
 )
-  #= Updates a single child process atom label.
+  #= Updates a single within group cluster label (wgroup==true) or a child
+  process atom label (wgroup == false).
   Input:
-  - jumps: all the jumps of the mother process.
-  - normals: all the normals distributions derived by the mother process
-    locations.
-  - nalloc: the number of allocated mother process atoms.
+  - jumps: all the jumps of the child (wgroup==true) or mother (wgroup==false)
+    process.
+  - normals: all the normals distributions derived by the child (wgroup==true)
+    or mother (wgroup==false) process locations.
+  - nalloc: the number of allocated child (wgroup==true) or mother
+    (wgroup==false) process atoms.
   - l: the index of the group.
-  - h: the index of the children atom. If the children atom is not allocated,
-    h must be the index w.r.t. the list of unallocated children atoms.
+  - idx: the index of the children atom or of the data point.
+    If the children atom is not allocated, idx must be the index w.r.t. the list
+    of unallocated children atoms.
+  - wgroup: look at initial description of function.
   - wasallocated: if the children atom, before this update, was already an
-    allocated atom or not.
+    allocated atom or not. If it was not allocated, the function allocates it.
+    Always true when wgroup == true, there can't be a new data point.
 
   jumps and normals are modified inside the function to remain coherent with
   possible updates of the mother atoms. nalloc is an integer, therefore its
   value cannot be modified inside the function, but must be returned.
   =#
+
+  if wgroup
+    childatomloc = input.data[l][idx]
+    labelsvec = state.wgroupcluslabels[l]
+
+    # The old label was a reference to a point in the child process of group
+    # l.
+    group = l
+  else
+    if wasallocated
+      childatomloc = state.childrenallocatedatoms[l].locations[idx]
+    else
+      childatomloc = state.childrennonallocatedatoms[l].locations[idx]
+    end
+    labelsvec = state.childrenatomslabels[l]
+
+    # The old label was a reference to a point in the mother process.
+    group = nothing
+  end
+
+  allocatedatoms, _ = getatomscont(state, group = group)
+
   if wasallocated
-    childatomloc = state.childrenallocatedatoms[l].locations[h]
-
     # Save the old clustering label of the atom.
-    oldidx = state.childrenatomslabels[l][h]
+    oldidx = labelsvec[idx]
 
-    state.motherallocatedatoms.counter[oldidx] -= 1
-    # If the children atom was the only one associated with a certain atom
-    # of the mother process, remove the latter from the list of allocated
-    # atoms.
-    if state.motherallocatedatoms.counter[oldidx] == 0
-      deallocateatom!(state, oldidx, group = nothing)
+    allocatedatoms.counter[oldidx] -= 1
+    # If the old label was the only one associated with a certain atom of the
+    # process, remove the latter from the list of allocated atoms.
+    if allocatedatoms.counter[oldidx] == 0
+      deallocateatom!(state, oldidx, group = group)
       nalloc -= 1
       moveinplace!(jumps, oldidx, size(jumps)[1])
-      moveinplace!(normals, oldidx, size(jumps)[1])
+      moveinplace!(normals, oldidx, size(normals)[1])
     end
-  else
-    childatomloc = state.childrennonallocatedatoms[l].locations[h]
   end
 
   logprobs = @. logpdf(normals, childatomloc) + log(jumps)
@@ -537,81 +568,72 @@ function updatesinglechildrenatomlabel!(
   sampledidx = rand(Categorical(exp.(logprobs)))
 
   if sampledidx > nalloc
-    # The sampled atom is a new atom.
-    allocateatom!(state, sampledidx - nalloc, group = nothing)
+    if wgroup
+      # The sampled children atom is a non allocated atom. We have to sample its
+      # label.
+      motherjumps = getalljumps(state)
+      mothernormals = getatomcenterednormals(state, model, group = nothing)
+      mothernalloc = size(state.motherallocatedatoms.jumps)[1]
+      updatesingleatomlabel!(
+        input,
+        state,
+        model,
+        motherjumps,
+        mothernormals,
+        mothernalloc,
+        l,
+        sampledidx - nalloc,
+        false,
+        false,
+      )
+    else
+      # The sampled atom is a new mother atom, we allocate it.
+      allocateatom!(state, sampledidx - nalloc, group = nothing)
+    end
     nalloc += 1
-    sampledidx = nalloc
     moveinplace!(jumps, sampledidx, nalloc)
     moveinplace!(normals, sampledidx, nalloc)
+    sampledidx = nalloc
   end
 
   if wasallocated
-    state.childrenatomslabels[l][h] = sampledidx
+    labelsvec[idx] = sampledidx
   else
-    allocateatom!(state, h, group = l)
+    allocateatom!(state, idx, group = l)
     push!(state.childrenatomslabels[l], sampledidx)
   end
-  state.motherallocatedatoms.counter[sampledidx] += 1
+  allocatedatoms.counter[sampledidx] += 1
 
   return nalloc
 end
 
 function updatewgroupcluslabels!(
+  input::MCMCInput,
   state::MCMCState,
   model::GammaCRMModel,
-  input::MCMCInput,
 )
   for l = 1:input.g
     jumps = getalljumps(state, group = l)
     normals = getatomcenterednormals(state, model, group = l)
     nalloc = size(state.childrenallocatedatoms[l].jumps)[1]
     for i = 1:input.n[l]
-      logprobs = @. logpdf(normals, input.data[l][i]) + log(jumps)
-      logprobs = logprobs .- logsumexp(logprobs)
-
-      sampledidx = rand(Categorical(exp.(logprobs)))
-
-      # Save the old clustering label of the atom.
-      oldidx = state.wgroupcluslabels[l][i]
-
-      if sampledidx > nalloc
-        # The sampled atom is a non allocated atom. We have to sample its label.
-        motherjumps = getalljumps(state)
-        mothernormals = getatomcenterednormals(state, model, group = nothing)
-        mothernalloc = size(state.motherallocatedatoms.jumps)[1]
-        updatesinglechildrenatomlabel!(
-          state,
-          model,
-          motherjumps,
-          mothernormals,
-          mothernalloc,
-          l,
-          sampledidx - nalloc,
-          false,
-        )
-        nalloc += 1
-        sampledidx = nalloc
-        moveinplace!(jumps, sampledidx, nalloc)
-        moveinplace!(normals, sampledidx, nalloc)
-      end
-      state.wgroupcluslabels[l][i] = sampledidx
-      state.childrenallocatedatoms[l].counter[sampledidx] += 1
-
-      state.childrenallocatedatoms[l].counter[oldidx] -= 1
-      # If the observation was the only one associated with a certain atom
-      # of the child process, remove the latter from the list of allocated
-      # atoms.
-      if state.childrenallocatedatoms[l].counter[oldidx] == 0
-        deallocateatom!(state, oldidx, group = l)
-        nalloc -= 1
-        moveinplace!(jumps, oldidx, size(jumps)[1])
-        moveinplace!(normals, oldidx, size(jumps)[1])
-      end
+      nalloc = updatesingleatomlabel!(
+        input,
+        state,
+        model,
+        jumps,
+        normals,
+        nalloc,
+        l,
+        i,
+        true,
+        true,
+      )
     end
   end
 end
 
-function updateauxu!(state::MCMCState, input::MCMCInput)
+function updateauxu!(input::MCMCInput, state::MCMCState)
   # For each group, compute the sum of all the jumps of the corresponding
   # child process.
   sumjumps =
@@ -695,9 +717,9 @@ function hsncpmixturemodel_fit(
 
     updatechildrenatomslabels!(state, model)
 
-    updatewgroupcluslabels!(state, model, input)
+    updatewgroupcluslabels!(input, state, model)
 
-    updateauxu!(state, input)
+    updateauxu!(input, state)
 
     if it > burnin && mod(it - burnin, thin) == 0
       updatemcmcoutput!(input, state, output, Int((it - burnin) / thin))
