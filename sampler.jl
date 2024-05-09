@@ -522,7 +522,7 @@ function updatesinglechildrenatomlabel!(
     # of the mother process, remove the latter from the list of allocated
     # atoms.
     if state.motherallocatedatoms.counter[oldidx] == 0
-      deallocatemotheratom!(state, oldidx)
+      deallocateatom!(state, oldidx, group = nothing)
       nalloc -= 1
       moveinplace!(jumps, oldidx, size(jumps)[1])
       moveinplace!(normals, oldidx, size(jumps)[1])
@@ -538,7 +538,7 @@ function updatesinglechildrenatomlabel!(
 
   if sampledidx > nalloc
     # The sampled atom is a new atom.
-    allocatemotheratom!(state, sampledidx - nalloc)
+    allocateatom!(state, sampledidx - nalloc, group = nothing)
     nalloc += 1
     sampledidx = nalloc
     moveinplace!(jumps, sampledidx, nalloc)
@@ -547,10 +547,11 @@ function updatesinglechildrenatomlabel!(
 
   if wasallocated
     state.childrenatomslabels[l][h] = sampledidx
-    state.motherallocatedatoms.counter[sampledidx] += 1
   else
-    allocatechildrenatom!(state, l, h, sampledidx)
+    allocateatom!(state, h, group = l)
+    push!(state.childrenatomslabels[l], sampledidx)
   end
+  state.motherallocatedatoms.counter[sampledidx] += 1
 
   return nalloc
 end
@@ -590,6 +591,8 @@ function updatewgroupcluslabels!(
         )
         nalloc += 1
         sampledidx = nalloc
+        moveinplace!(jumps, sampledidx, nalloc)
+        moveinplace!(normals, sampledidx, nalloc)
       end
       state.wgroupcluslabels[l][i] = sampledidx
       state.childrenallocatedatoms[l].counter[sampledidx] += 1
@@ -599,8 +602,10 @@ function updatewgroupcluslabels!(
       # of the child process, remove the latter from the list of allocated
       # atoms.
       if state.childrenallocatedatoms[l].counter[oldidx] == 0
-        deallocatechildrenatom!(state, l, oldidx)
+        deallocateatom!(state, oldidx, group = l)
         nalloc -= 1
+        moveinplace!(jumps, oldidx, size(jumps)[1])
+        moveinplace!(normals, oldidx, size(jumps)[1])
       end
     end
   end

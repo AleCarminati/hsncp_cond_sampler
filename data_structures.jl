@@ -46,20 +46,23 @@ mutable struct AtomsContainer
   end
 end
 
-function deleteatatomcont!(atoms::AtomsContainer, h)
-  jump = atoms.jumps[h]
-  deleteat!(atoms.jumps, h)
-  location = atoms.locations[h]
-  deleteat!(atoms.locations, h)
-  counter = atoms.counter[h]
-  deleteat!(atoms.counter, h)
-  return jump, location, counter
-end
+function deleteandpushatomcont!(
+  startatoms::AtomsContainer,
+  endatoms::AtomsContainer,
+  idx,
+)
+  # Delete the atom at index idx in startatoms and push it in endatoms, with a
+  # 0 counter.
 
-function pushatomcont!(atoms::AtomsContainer, jump, location, counter)
-  push!(atoms.jumps, jump)
-  push!(atoms.locations, location)
-  push!(atoms.counter, counter)
+  jump = startatoms.jumps[idx]
+  deleteat!(startatoms.jumps, idx)
+  location = startatoms.locations[idx]
+  deleteat!(startatoms.locations, idx)
+  deleteat!(startatoms.counter, idx)
+
+  push!(endatoms.jumps, jump)
+  push!(endatoms.locations, location)
+  push!(endatoms.counter, 0)
 end
 
 mutable struct MCMCState
@@ -100,126 +103,92 @@ mutable struct MCMCState
   end
 end
 
+function getatomscont(state::MCMCState; group = nothing)
+  # Returns the AtomsContainer of the allocated atoms and of the non allocated
+  # atoms of the child process (if group is specified) or the mother process
+  # (if group is not specified).
+  if group == nothing
+    allocatedatoms = state.motherallocatedatoms
+    nonallocatedatoms = state.mothernonallocatedatoms
+  else
+    allocatedatoms = state.childrenallocatedatoms[group]
+    nonallocatedatoms = state.childrennonallocatedatoms[group]
+  end
+
+  return allocatedatoms, nonallocatedatoms
+end
+
 function getalljumps(state::MCMCState; group = nothing)
   # Returns a vector containing all the jumps of the child process (if group is
   # specified) or the mother process (if group is not specified).
-  if group == nothing
-    return vcat(
-      state.motherallocatedatoms.jumps,
-      state.mothernonallocatedatoms.jumps,
-    )
-  else
-    return vcat(
-      state.childrenallocatedatoms[group].jumps,
-      state.childrennonallocatedatoms[group].jumps,
-    )
-  end
+
+  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
+
+  return vcat(allocatedatoms.jumps, nonallocatedatoms.jumps)
 end
 
 function getalllocs(state::MCMCState; group = nothing)
   # Returns a vector containing all the locations of the child process (if
   # group is specified) or the mother process (if group is not specified).
-  if group == nothing
-    return vcat(
-      state.motherallocatedatoms.locations,
-      state.mothernonallocatedatoms.locations,
-    )
-  else
-    return vcat(
-      state.childrenallocatedatoms[group].locations,
-      state.childrennonallocatedatoms[group].locations,
-    )
-  end
+
+  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
+
+  return vcat(allocatedatoms.locations, nonallocatedatoms.locations)
 end
 
-function deallocatechildrenatom!(state::MCMCState, l, h)
-  #= This function removes the h-indexed allocated atom of the child process
-    of group l from the list of allocated atoms. It also modifies the other
+function deallocateatom!(state::MCMCState, idx; group = nothing)
+  #= This function removes the allocated atom with index idx of the child
+    process (if group is specified) or the mother process (if group is not
+    specified) from the list of the allocated atoms. It also modifies the other
     elements of the state to maintain coherency. =#
 
-  # Remove all the information of the selected atom from the list of allocated
-  # atoms.
-  jump, location, _ = deleteatatomcont!(state.childrenallocatedatoms[l], h)
+  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
 
-  # Add the selected atom to the list of non allocated atoms.
-  pushatomcont!(state.childrennonallocatedatoms[l], jump, location, 0)
-
-  # Get the index of the corresponding mother process atom.
-  idxmotheratom = state.childrenatomslabels[l][h]
-  # Decrease the counter of the corresponding mother process atom.
-  state.motherallocatedatoms.counter[idxmotheratom] -= 1
-  # If the corresponding mother process atom does not have any associated
-  # child processes' atoms, deallocate it.
-  if state.motherallocatedatoms.counter[idxmotheratom] == 0
-    deallocatemotheratom!(state, idxmotheratom)
-  end
-
-  # Remove the clustering label for the selected atom. Indeed, the state does
-  # not contain clustering labels for non allocated atoms.
-  deleteat!(state.childrenatomslabels[l], h)
+  # Move the atom from the list of allocated atoms to the list of non allocated
+  # ones.
+  deleteandpushatomcont!(allocatedatoms, nonallocatedatoms, idx)
 
   #= Given that an allocated atom has been removed, the other allocated atoms
-    with index greater than h had their index reduced by 1. Thus, we reduce the
-    corresponding index in the vector of the within-group clustering labels. =#
-  state.wgroupcluslabels[l] =
-    state.wgroupcluslabels[l] - (state.wgroupcluslabels[l] .> h)
-end
-
-function allocatechildrenatom!(state::MCMCState, l, h, atomlabel)
-  #= This function adds the h-indexed non allocated atom of the child process
-    of group l to the list of allocated atoms. It also modifies the other
-    elements of the state to maintain coherency.
-    This function does not change the within group clustering labels and it
-    initializes the counter of the selected atom to 0. =#
-
-  # Remove all the information of the selected atom from the list of non
-  # allocated atoms.
-  jump, location, _ = deleteatatomcont!(state.childrennonallocatedatoms[l], h)
-
-  # Add the clustering label for the selected atom.
-  push!(state.childrenatomslabels[l], atomlabel)
-
-  # Increase the counter of the corresponding mother process atom.
-  state.motherallocatedatoms.counter[atomlabel] += 1
-
-  # Add the selected atom to the list of allocated atoms.
-  pushatomcont!(state.childrenallocatedatoms[l], jump, location, 0)
-end
-
-function deallocatemotheratom!(state::MCMCState, j)
-  #= This function removes the j-indexed allocated atom of the mother process
-    from the list of allocated atoms. It also modifies the other
-    elements of the state to maintain coherency. =#
-
-  # Remove all the information of the selected atom from the list of allocated
-  # atoms.
-  jump, location, _ = deleteatatomcont!(state.motherallocatedatoms, j)
-
-  # Add the selected atom to the list of non allocated atoms.
-  pushatomcont!(state.mothernonallocatedatoms, jump, location, 0)
-
-  #= Given that an allocated atom has been removed, the other allocated atoms
-    with index greater than j had their index reduced by 1. Thus, we reduce
+    with index greater than idx had their index reduced by 1. Thus, we reduce
     the corresponding index in the vector of the children atoms clustering
-    labels. We use the map() function because this operation must be repeated
-    for every group. =#
-  state.childrenatomslabels =
-    map(x -> @.(x - (x > j)), state.childrenatomslabels)
+    labels.=#
+  if group == nothing
+    # We use the map() function because this operation must be repeated
+    # for every group.
+    state.childrenatomslabels =
+      map(x -> @.(x - (x > idx)), state.childrenatomslabels)
+  else
+    # Maintain coherence with labels and counters of the mother process.
+    # Get the index of the corresponding mother process atom.
+    idxmotheratom = state.childrenatomslabels[group][idx]
+    # Decrease the counter of the corresponding mother process atom.
+    state.motherallocatedatoms.counter[idxmotheratom] -= 1
+    # If the corresponding mother process atom does not have any associated
+    # child processes' atoms, deallocate it.
+    if state.motherallocatedatoms.counter[idxmotheratom] == 0
+      deallocateatom!(state, idxmotheratom, group = nothing)
+    end
+
+    # Remove the clustering label for the selected atom. Indeed, the state does
+    # not contain clustering labels for non allocated atoms.
+    deleteat!(state.childrenatomslabels[group], idx)
+
+    state.wgroupcluslabels[group] -= (state.wgroupcluslabels[group] .> idx)
+  end
 end
 
-function allocatemotheratom!(state::MCMCState, j)
-  #= This function adds the j-indexed non allocated atom of the mother process
-    to the list of allocated atoms. It also modifies the other elements of the
-    state to maintain coherency.
-    This function does not change the clustering labels and it initializes the
+function allocateatom!(state::MCMCState, idx; group = nothing)
+  #= Adds the idx-indexed non allocated atom of the child process (if group is
+    specified) or the mother process (if group is not specified) to the list of
+    allocated atoms.
+    This function does not change any clustering labels and it initializes the
     counter of the selected atom to 0. =#
 
-  # Remove all the information of the selected atom from the list of non
-  # allocated atoms.
-  jump, location, _ = deleteatatomcont!(state.mothernonallocatedatoms, j)
+  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
 
-  # Add the selected atom to the list of non allocated atoms.
-  pushatomcont!(state.motherallocatedatoms, jump, location, 0)
+  # Move the atom from the list of allocated atoms to the list of non allocated
+  # ones.
+  deleteandpushatomcont!(nonallocatedatoms, allocatedatoms, idx)
 end
 
 struct MCMCOutput
