@@ -100,6 +100,118 @@ function teststate(state::MCMCState)
   @test checkmotheratomcontainerlength(state)
 end
 
+@testset "Data structures" begin
+  @testset "Deallocate mother atom" begin
+    g = 2
+    n = 100
+    data = [rand(n) for l = 1:g]
+    input = MCMCInput(data)
+    state = MCMCState(input.g, input.n)
+
+    state.childrenatomslabels[1] = fill(2, 10)
+    state.childrenatomslabels[2] = fill(2, 10)
+
+    push!(state.motherallocatedatoms.locations, [3], [4])
+    push!(state.motherallocatedatoms.jumps, 30, 40)
+    push!(state.motherallocatedatoms.counter, 0, 4)
+
+    deallocateatom!(state, 1, group = nothing)
+
+    @test state.childrenatomslabels[1] == fill(1, 10)
+    @test state.childrenatomslabels[2] == fill(1, 10)
+    @test state.motherallocatedatoms.locations == [[4]]
+    @test state.mothernonallocatedatoms.locations == [[3]]
+    @test state.motherallocatedatoms.jumps == [40]
+    @test state.mothernonallocatedatoms.jumps == [30]
+    @test state.motherallocatedatoms.counter == [4]
+    @test state.mothernonallocatedatoms.counter == [0]
+  end
+
+  @testset "Deallocate children atom" begin
+    g = 2
+    n = 100
+    data = [rand(n) for l = 1:g]
+    input = MCMCInput(data)
+    state = MCMCState(input.g, input.n)
+
+    state.wgroupcluslabels[2] .= fill(2, n)
+
+    push!(state.childrenallocatedatoms[2].locations, [1], [2])
+    push!(state.childrenallocatedatoms[2].jumps, 10, 20)
+    push!(state.childrenallocatedatoms[2].counter, 0, n)
+
+    state.childrenatomslabels[2] = [1, 2]
+
+    push!(state.motherallocatedatoms.locations, [3], [4])
+    push!(state.motherallocatedatoms.jumps, 30, 40)
+    push!(state.motherallocatedatoms.counter, 1, 1)
+
+    deallocateatom!(state, 1, group = 2)
+
+    @test state.childrenallocatedatoms[2].locations == [[2]]
+    @test state.childrennonallocatedatoms[2].locations == [[1]]
+    @test state.childrenallocatedatoms[2].jumps == [20]
+    @test state.childrennonallocatedatoms[2].jumps == [10]
+    @test state.childrenallocatedatoms[2].counter == [n]
+    @test state.wgroupcluslabels[2] == fill(1, n)
+    @test state.childrenatomslabels[2] == [1]
+    @test state.motherallocatedatoms.locations == [[4]]
+    @test state.mothernonallocatedatoms.locations == [[3]]
+    @test state.motherallocatedatoms.jumps == [40]
+    @test state.mothernonallocatedatoms.jumps == [30]
+    @test state.motherallocatedatoms.counter == [1]
+    @test state.mothernonallocatedatoms.counter == [0]
+  end
+
+  @testset "Allocate mother atom" begin
+    g = 2
+    n = 100
+    data = [rand(n) for l = 1:g]
+    input = MCMCInput(data)
+    state = MCMCState(input.g, input.n)
+
+    push!(state.motherallocatedatoms.locations, [3])
+    push!(state.motherallocatedatoms.jumps, 30)
+    push!(state.motherallocatedatoms.counter, 1)
+    push!(state.mothernonallocatedatoms.locations, [4])
+    push!(state.mothernonallocatedatoms.jumps, 40)
+    push!(state.mothernonallocatedatoms.counter, 0)
+
+    allocateatom!(state, 1, group = nothing)
+
+    @test state.motherallocatedatoms.locations == [[3], [4]]
+    @test state.mothernonallocatedatoms.locations == []
+    @test state.motherallocatedatoms.jumps == [30, 40]
+    @test state.mothernonallocatedatoms.jumps == []
+    @test state.motherallocatedatoms.counter == [1, 0]
+    @test state.mothernonallocatedatoms.counter == []
+  end
+
+  @testset "Allocate children atom" begin
+    g = 2
+    n = 100
+    data = [rand(n) for l = 1:g]
+    input = MCMCInput(data)
+    state = MCMCState(input.g, input.n)
+
+    push!(state.motherallocatedatoms.locations, [1])
+    push!(state.motherallocatedatoms.jumps, 10)
+    push!(state.motherallocatedatoms.counter, 1)
+    push!(state.mothernonallocatedatoms.locations, [2])
+    push!(state.mothernonallocatedatoms.jumps, 20)
+    push!(state.mothernonallocatedatoms.counter, 0)
+
+    allocateatom!(state, 1, group = nothing)
+
+    @test state.motherallocatedatoms.locations == [[1], [2]]
+    @test state.mothernonallocatedatoms.locations == []
+    @test state.motherallocatedatoms.jumps == [10, 20]
+    @test state.mothernonallocatedatoms.jumps == []
+    @test state.motherallocatedatoms.counter == [1, 0]
+    @test state.mothernonallocatedatoms.counter == []
+  end
+end
+
 @testset "MCMC" begin
   g = 3
   n = 500
