@@ -38,6 +38,9 @@ abstract type GammaCRMModel <: Model end
   # Hyperparameters for the Gamma CRM of the mother process.
   mothertotalmass::Float64
   motherlocsd::Float64
+
+  # The number of mother processes.
+  nmotherprocesses::Int32
 end
 
 function samplepriormotherloc(model::NormalMeanModel, n)
@@ -79,6 +82,9 @@ end
   motherlocsd::Float64
   motherlocshape::Float64
   motherlocscale::Float64
+
+  # The number of mother processes.
+  nmotherprocesses::Int32
 end
 
 function samplechildloc(model::NormalMeanVarModel, associatedmotheratomloc)
@@ -115,6 +121,9 @@ end
   motherlocsd::Float64
   motherlocshape::Float64
   motherlocscale::Float64
+
+  # The number of mother processes.
+  nmotherprocesses::Int32
 end
 
 function samplepriormotherloc(
