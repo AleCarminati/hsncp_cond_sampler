@@ -807,7 +807,7 @@ function updatewgroupcluslabels!(
   end
 end
 
-function updateprobsgroupclus!(state::MCMCState, model::GammaCRMModel)
+function updateprobsgroupclus!(state::MCMCState, model::Model)
   postdirparams =
     model.dirparam * ones(model.nmotherprocesses) +
     StatsBase.counts(state.groupcluslabels)
@@ -892,13 +892,15 @@ function hsncpmixturemodel_fit(
   for it in ProgressBar(1:(burnin+iterations*thin))
     updatemixtparams!(input, state, model)
 
+    updategroupandchildrenatomslabels!(state, model)
+
     updatemotherprocess!(state, model)
 
     updatechildprocesses!(input, state, model)
 
-    updatechildrenatomslabels!(state, model)
-
     updatewgroupcluslabels!(input, state, model)
+
+    updateprobsgroupclus!(state, model)
 
     updateauxu!(input, state)
 
