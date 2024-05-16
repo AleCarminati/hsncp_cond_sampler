@@ -375,7 +375,7 @@ function updatemotherprocessallocmeans!(state::MCMCState, model::GammaCRMModel)
           y ->
             transpose(state.childrenatomslabels[y] .== x) *
             getprocessmeans(state, model, group = y, onlyalloc = true),
-          findall(state.groupcluslabels == m),
+          findall(state.groupcluslabels .== m),
         ),
       ),
       1:size(state.motherallocatedatoms[m].jumps)[1],
@@ -418,7 +418,7 @@ function updatemotherprocessallocvars!(
               )^2
             )
           ),
-          findall(state.groupcluslabels == m),
+          findall(state.groupcluslabels .== m),
         ),
       ),
       1:size(state.motherallocatedatoms[m].jumps)[1],
@@ -894,7 +894,7 @@ function hsncpmixturemodel_fit(
 
     updategroupandchildrenatomslabels!(state, model)
 
-    updatemotherprocess!(state, model)
+    updatemotherprocesses!(state, model)
 
     updatechildprocesses!(input, state, model)
 

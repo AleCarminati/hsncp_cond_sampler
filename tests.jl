@@ -30,7 +30,13 @@ function checkchildrenatomslabelsnogaps(state::MCMCState)
       return false
     end
   end
+
   return true
+end
+
+function checkgroupcluslabelsnogaps(state::MCMCState)
+  # Check that there are no gaps in group cluster labels.
+  return all(StatsBase.counts(state.groupcluslabels) .> 0)
 end
 
 function checkchildrencluscount(state::MCMCState)
@@ -51,18 +57,27 @@ end
 
 function checkmothercluscount(state::MCMCState)
   # Check if the saved counters are correct.
-  g = size(state.wgroupcluslabels)[1]
+  for m = 1:size(state.probsgroupclus)[1]
+    maxlabel = maximum(
+      map(
+        x -> maximum(state.childrenatomslabels[x]),
+        findall(state.groupcluslabels .== m),
+      ),
+    )
 
-  maxlabel =
-    maximum(map(x -> maximum(state.childrenatomslabels[x]), Vector(1:g)))
-
-  for label = 1:maxlabel
-    totcounter =
-      sum(map(x -> sum(state.childrenatomslabels[x] .== label), Vector(1:g)))
-    if totcounter != state.motherallocatedatoms.counter[label]
-      return false
+    for label = 1:maxlabel
+      totcounter = sum(
+        map(
+          x -> sum(state.childrenatomslabels[x] .== label),
+          findall(state.groupcluslabels .== m),
+        ),
+      )
+      if totcounter != state.motherallocatedatoms[m].counter[label]
+        return false
+      end
     end
   end
+
   return true
 end
 
@@ -83,17 +98,26 @@ end
 function checkmotheratomcontainerlength(state::MCMCState)
   # Check if the number of allocated atoms in the mother process is equal to
   # the maximum label.
-  g = size(state.wgroupcluslabels)[1]
+  for m = 1:size(state.probsgroupclus)[1]
+    maxlabel = maximum(
+      map(
+        x -> maximum(state.childrenatomslabels[x]),
+        findall(state.groupcluslabels .== m),
+      ),
+    )
 
-  maxlabel =
-    maximum(map(x -> maximum(state.childrenatomslabels[x]), Vector(1:g)))
+    if maxlabel != size(state.motherallocatedatoms[m].counter)[1]
+      return false
+    end
+  end
 
-  return maxlabel == size(state.motherallocatedatoms.counter)[1]
+  return true
 end
 
 function teststate(state::MCMCState)
   @test checkwgroupcluslabelsnogaps(state)
   @test checkchildrenatomslabelsnogaps(state)
+  @test checkgroupcluslabelsnogaps(state)
   @test checkchildrencluscount(state)
   @test checkmothercluscount(state)
   @test checkchildrenatomsontainerlength(state)
@@ -245,7 +269,7 @@ end
   end
 
   @testset "Update mother process" begin
-    updatemotherprocess!(state, model)
+    updatemotherprocesses!(state, model)
 
     teststate(state)
   end
@@ -257,7 +281,7 @@ end
   end
 
   @testset "Update child atoms labels" begin
-    updatechildprocesses!(input, state, model)
+    updategroupandchildrenatomslabels!(state, model)
 
     teststate(state)
   end
