@@ -75,8 +75,11 @@ mutable struct MCMCState
   # A vector containing, for each group, the clustering labels for each
   # allocated atom of the child process.
   childrenatomslabels::Vector{Vector{Int32}}
-  # A vector containing, for each label, its associated mother process label.
-  groupcluslabels::Vector{Int32}
+  # A vector containing, for each group, its associated mother process label.
+  const groupcluslabels::Vector{Int32}
+  # A vector containing the probability for a generic group to be assigned to
+  # a mother atom.
+  const probsgroupclus::Vector{Float64}
   #= A vector containing, for each group, the allocated atoms of the children
   process. A atom is allocated if it is linked to at least one observation
   through the clustering labels. =#
@@ -169,7 +172,7 @@ function deallocateatom!(
     the corresponding index in the vector of the children atoms clustering
     labels.=#
   if group == nothing
-    for l in eachindex(state.childrenatomslabels)
+    for l in findall(state.groupcluslabels == motherprocess)
       state.childrenatomslabels[l] .-= (state.childrenatomslabels[l] .> idx)
     end
   else

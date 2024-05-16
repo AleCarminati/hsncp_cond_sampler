@@ -13,6 +13,10 @@ function samplechildloc end
 function samplepriormixtparams end
 # Samples from the prior of the mixture parameters.
 
+function samplepriorgroupclusprob end
+# Samples from the prior of the probability to have a certain group cluster
+# label.
+
 abstract type GammaCRMModel <: Model end
 
 @kwdef struct NormalMeanModel <: GammaCRMModel
@@ -41,6 +45,10 @@ abstract type GammaCRMModel <: Model end
 
   # The number of mother processes.
   nmotherprocesses::Int32
+
+  # The parameter of the Dirichlet distribution for the probability to have
+  # a certain group cluster label.
+  dirparam::Float64
 end
 
 function samplepriormotherloc(model::NormalMeanModel, n)
@@ -56,6 +64,10 @@ end
 
 function samplepriormixtparams(model::NormalMeanModel)
   return []
+end
+
+function samplepriorprobgroupclus(model::GammaCRMModel)
+  return rand(Dirichlet(model.nmotherprocesses, model.dirparam))
 end
 
 @kwdef struct NormalMeanVarModel <: GammaCRMModel
@@ -85,6 +97,10 @@ end
 
   # The number of mother processes.
   nmotherprocesses::Int32
+
+  # The parameter of the Dirichlet distribution for the probability to have
+  # a certain group cluster label.
+  dirparam::Float64
 end
 
 function samplechildloc(model::NormalMeanVarModel, associatedmotheratomloc)
@@ -124,6 +140,10 @@ end
 
   # The number of mother processes.
   nmotherprocesses::Int32
+
+  # The parameter of the Dirichlet distribution for the probability to have
+  # a certain group cluster label.
+  dirparam::Float64
 end
 
 function samplepriormotherloc(

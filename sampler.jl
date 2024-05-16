@@ -151,11 +151,18 @@ function initalizemcmcstate!(
   childnatoms = 5
 
   # Sample the atoms of the mother process.
-  motheratomsjumps = rand(Distributions.Gamma(1, 1), mothernatoms)
-  motheratomslocations = samplepriormotherloc(model, mothernatoms)
+  motheratomsjumps = [
+    rand(Distributions.Gamma(1, 1), mothernatoms) for
+    _ = 1:model.nmotherprocesses
+  ]
+  motheratomslocations =
+    [samplepriormotherloc(model, mothernatoms) for _ = 1:model.nmotherprocesses]
 
   # Contains the frequency of the sampled labels for the mother process.
-  motherfreq = zeros(mothernatoms)
+  motherfreq = [zeros(mothernatoms) for _ = 1:model.nmotherprocesses]
+
+  probsgroupclus = samplepriorprobgroupclus(model)
+  groupcluslabels = rand(Categorical(probsgroupclus), input.g)
 
   for l = 1:input.g
     #= The sampled labels go from 1 to mothernatoms, while the labels of the
@@ -165,11 +172,13 @@ function initalizemcmcstate!(
       rand(Distributions.DiscreteUniform(1, mothernatoms), childnatoms)
 
     childatomsjumps = rand(Distributions.Gamma(1, 1), childnatoms)
+
     # For each atom of the child process, sample its location based on
     # the associated atom of the mother process.
-
-    childatomslocations =
-      samplechildloc(model, motheratomslocations[tempmotherlabels])
+    childatomslocations = samplechildloc(
+      model,
+      motheratomslocations[groupcluslabels][tempmotherlabels],
+    )
 
     #= The sampled labels go from 1 to childnatoms, while the labels of the
       state should go from 1 to the number of allocated atoms of the child
@@ -208,7 +217,7 @@ function initalizemcmcstate!(
       zeros(size(nonallocatomsidx)[1])
 
     # Update the frequency of the sampled labels for the mother process.
-    motherfreq +=
+    motherfreq[groupcluslabels] +=
       StatsBase.counts(tempmotherlabels[allocatomsidx], mothernatoms)
     #= Save the sampled labels in the state, only for the allocated child
       process' atoms. Attention: at this stage, the sampled labels go from 1 to
@@ -221,34 +230,45 @@ function initalizemcmcstate!(
     state.auxu[l] = rand(Distributions.Gamma(input.n[l], sum(childatomsjumps)))
   end
 
-  # Extract the indexes of the mother process' atoms that have not been
-  # allocated.
-  mothernonallocatomsidx = (1:mothernatoms)[motherfreq.==0]
-  # Extract the indexes of the mother process' atoms that have been allocated.
-  motherallocatomsidx = (1:mothernatoms)[motherfreq.!=0]
+  for m = 1:model.nmotherprocesses
+    # Extract the indexes of the mother process' atoms that have not been
+    # allocated.
+    mothernonallocatomsidx = (1:mothernatoms)[motherfreq[m].==0]
+    # Extract the indexes of the mother process' atoms that have been allocated.
+    motherallocatomsidx = (1:mothernatoms)[motherfreq[m].!=0]
 
-  #= Function that transforms the sampled labels (from 1 to mothernatoms) in
-    the correct cluster labels for the child processes' atoms (from 1 to the
-    number of allocated atoms of the mother process).
-    Then, for each group, apply the function to the sampled labels vector. =#
-  obtaincluslabel = x -> findfirst(motherallocatomsidx .== x)
-  state.childrenatomslabels =
-    map(l -> map(obtaincluslabel, state.childrenatomslabels[l]), 1:input.g)
+    #= Function that transforms the sampled labels (from 1 to mothernatoms) in
+      the correct cluster labels for the child processes' atoms (from 1 to the
+      number of allocated atoms of the mother process).
+      Then, for each group, apply the function to the sampled labels vector. =#
+    obtaincluslabel = x -> findfirst(motherallocatomsidx .== x)
 
-  # Select the jumps and the locations of the allocated mother process' atoms.
-  state.motherallocatedatoms.jumps = motheratomsjumps[motherallocatomsidx]
-  state.motherallocatedatoms.locations =
-    motheratomslocations[motherallocatomsidx]
-  # The counters will be the frequencies of the sampled labels for the
-  # allocated atoms.
-  state.motherallocatedatoms.counter = motherfreq[motherallocatomsidx]
+    state.childrenatomslabels[l] = map(
+      l -> map(obtaincluslabel, state.childrenatomslabels[l]),
+      findall(groupcluslabels .== m),
+    )
 
-  # Select the jumps and the locations of the non allocated mother process'
-  # atoms.
-  state.mothernonallocatedatoms.jumps = motheratomsjumps[mothernonallocatomsidx]
-  state.mothernonallocatedatoms.locations =
-    motheratomslocations[mothernonallocatomsidx]
-  state.mothernonallocatedatoms.counter = zeros(size(mothernonallocatomsidx)[1])
+    # Select the jumps and the locations of the allocated mother process' atoms.
+    state.motherallocatedatoms[m].jumps =
+      motheratomsjumps[m][motherallocatomsidx]
+    state.motherallocatedatoms[m].locations =
+      motheratomslocations[m][motherallocatomsidx]
+    # The counters will be the frequencies of the sampled labels for the
+    # allocated atoms.
+    state.motherallocatedatoms[m].counter = motherfreq[m][motherallocatomsidx]
+
+    # Select the jumps and the locations of the non allocated mother process'
+    # atoms.
+    state.mothernonallocatedatoms[m].jumps =
+      motheratomsjumps[m][mothernonallocatomsidx]
+    state.mothernonallocatedatoms[m].locations =
+      motheratomslocations[m][mothernonallocatomsidx]
+    state.mothernonallocatedatoms[m].counter =
+      zeros(size(mothernonallocatomsidx)[1])
+  end
+
+  state.probsgroupclus .= probsgroupclus
+  state.groupcluslabels .= groupcluslabels
 end
 
 function updatemixtparams!(
@@ -281,130 +301,162 @@ function updatemixtparams!(
   state.mixtparams[1] = rand(InverseGamma(postshape, postscale))
 end
 
-function updatemotherprocess!(state::MCMCState, model::Model)
-  # Update the allocated atoms of the mother process.
-  updatemotherprocessalloc!(state, model)
-  # Update the non allocated atoms of the mother process.
-  updatemotherprocessnonalloc!(state, model)
+function updatemotherprocesses!(state::MCMCState, model::Model)
+  # Update the allocated atoms of the mother processes.
+  updatemotherprocessesalloc!(state, model)
+  # Update the non allocated atoms of the mother processes.
+  updatemotherprocessesnonalloc!(state, model)
 end
 
-function updatemotherprocessalloc!(state::MCMCState, model::NormalMeanModel)
+function updatemotherprocessesalloc!(state::MCMCState, model::NormalMeanModel)
   # First, sample the jumps.
-  updatemotherprocessallocjumps!(state, model)
+  updatemotherprocessesallocjumps!(state, model)
 
   # Then, sample the locations.
-  updatemotherprocessallocmeans!(state, model)
+  updatemotherprocessesallocmeans!(state, model)
 end
 
-function updatemotherprocessalloc!(
+function updatemotherprocessesalloc!(
   state::MCMCState,
   model::Union{NormalMeanVarModel,NormalMeanVarVarModel},
 )
   g = size(state.wgroupcluslabels)[1]
 
   # First, sample the jumps.
-  updatemotherprocessallocjumps!(state, model)
+  updatemotherprocessesallocjumps!(state, model)
 
   # Then, sample the locations.
-  updatemotherprocessallocmeans!(state, model)
-
-  shapes = @. model.motherlocshape + state.motherallocatedatoms.counter / 2
-
-  # For each allocated atom j of the mother process, compute the sum of the
-  # squared differences between atoms of the child processes that are associated
-  # with j and the mean value for the atom j.
-  sums = map(
-    x -> sum(
-      map(
-        y -> sum(
-          @.(
-            (
-              $getprocessmeans(state, model, group = y, onlyalloc = true)[state.childrenatomslabels[y]==x] -
-              state.motherallocatedatoms.locations[x][1]
-            )^2
-          )
-        ),
-        Vector(1:g),
-      ),
-    ),
-    1:size(state.motherallocatedatoms.jumps)[1],
-  )
-
-  scales = @. model.motherlocscale + sums / 2
-
-  igammas = InverseGamma.(shapes, scales)
-
-  for i = 1:size(state.motherallocatedatoms.locations)[1]
-    state.motherallocatedatoms.locations[i][2] = rand(igammas[i])
-  end
+  updatemotherprocessesallocmeans!(state, model)
+  updatemotherprocessesallocvars!(state, model)
 end
 
 function updatemotherprocessallocjumps!(state::MCMCState, model::GammaCRMModel)
-  # Function that samples the jumps for the allocated atoms of the mother
-  # process.
-  g = size(state.childrenallocatedatoms)[1]
-  shape = state.motherallocatedatoms.counter
-  rate = 1 + model.childrentotalmass * sum(log.(1 .+ state.auxu))
-  # The rate is equal for all the Gamma distributions, therefore transform it
-  # from a scalar to a vector with the same values.
-  rate = fill(rate, size(shape)[1])
+  # Samples the jumps for the allocated atoms of the mother processes.
+  for m = 1:nmotherprocesses
+    shape = state.motherallocatedatoms[m].counter
+    rate =
+      1 +
+      model.childrentotalmass *
+      sum(@. log(1 + state.auxu[state.groupcluslabels==m]))
+    # The rate is equal for all the Gamma distributions, therefore transform it
+    # from a scalar to a vector with the same values.
+    rate = fill(rate, size(shape)[1])
 
-  # We write the inverse of the second parameter because the Gamma() function
-  # requires the shape and the scale.
-  gammas = @. Gamma(shape, 1 / rate)
+    # We write the inverse of the second parameter because the Gamma() function
+    # requires the shape and the scale.
+    gammas = @. Gamma(shape, 1 / rate)
 
-  state.motherallocatedatoms.jumps[:] = rand.(gammas)
+    state.motherallocatedatoms[m].jumps[:] = rand.(gammas)
+  end
 end
 
 function updatemotherprocessallocmeans!(state::MCMCState, model::GammaCRMModel)
-  g = size(state.childrenallocatedatoms)[1]
+  for m = 1:nmotherprocesses
+    g = size(state.childrenallocatedatoms)[1]
 
-  standevs = @. sqrt(
-    1 / (
-      1 / model.motherlocsd^2 +
-      state.motherallocatedatoms.counter /
-      $getprocessvars(state, model, group = nothing, onlyalloc = true)
-    ),
-  )
-
-  # For each allocated atom j of the mother process, compute the sum of all the
-  # atoms of the child processes that are associated with j.
-  sums = map(
-    x -> sum(
-      map(
-        y ->
-          transpose(state.childrenatomslabels[y] .== x) *
-          getprocessmeans(state, model, group = y, onlyalloc = true),
-        Vector(1:g),
+    standevs = @. sqrt(
+      1 / (
+        1 / model.motherlocsd^2 +
+        state.motherallocatedatoms[m].counter / $getprocessvars(
+          state,
+          model,
+          group = nothing,
+          motherprocess = m,
+          onlyalloc = true,
+        )
       ),
-    ),
-    1:size(state.motherallocatedatoms.jumps)[1],
-  )
+    )
 
-  means =
-    @. sums / $getprocessvars(state, model, group = nothing, onlyalloc = true) *
-       standevs^2
+    # For each allocated atom j of the mother process, compute the sum of all
+    # the atoms of the child processes that are associated with j.
+    sums = map(
+      x -> sum(
+        map(
+          y ->
+            transpose(state.childrenatomslabels[y] .== x) *
+            getprocessmeans(state, model, group = y, onlyalloc = true),
+          findall(state.groupcluslabels == m),
+        ),
+      ),
+      1:size(state.motherallocatedatoms[m].jumps)[1],
+    )
 
-  normals = Normal.(means, standevs)
+    means = @. sums / $getprocessvars(
+      state,
+      model,
+      group = nothing,
+      motherprocess = m,
+      onlyalloc = true,
+    ) * standevs^2
 
-  for i = 1:size(state.motherallocatedatoms.locations)[1]
-    state.motherallocatedatoms.locations[i][1] = rand(normals[i])
+    normals = Normal.(means, standevs)
+
+    for i = 1:size(state.motherallocatedatoms[m].locations)[1]
+      state.motherallocatedatoms[m].locations[i][1] = rand(normals[i])
+    end
+  end
+end
+
+function updatemotherprocessallocvars!(
+  state::MCMCState,
+  model::Union{NormalMeanVarModel,NormalMeanVarVarModel},
+)
+  for m = 1:nmotherprocesses
+    shapes = @. model.motherlocshape + state.motherallocatedatoms[m].counter / 2
+
+    # For each allocated atom j of the mother process, compute the sum of the
+    # squared differences between atoms of the child processes that are associated
+    # with j and the mean value for the atom j.
+    sums = map(
+      x -> sum(
+        map(
+          y -> sum(
+            @.(
+              (
+                $getprocessmeans(state, model, group = y, onlyalloc = true)[state.childrenatomslabels[y]==x] -
+                state.motherallocatedatoms[m].locations[x][1]
+              )^2
+            )
+          ),
+          findall(state.groupcluslabels == m),
+        ),
+      ),
+      1:size(state.motherallocatedatoms[m].jumps)[1],
+    )
+
+    scales = @. model.motherlocscale + sums / 2
+
+    igammas = InverseGamma.(shapes, scales)
+
+    for i = 1:size(state.motherallocatedatoms[m].locations)[1]
+      state.motherallocatedatoms[m].locations[i][2] = rand(igammas[i])
+    end
   end
 end
 
 function updatemotherprocessnonalloc!(state::MCMCState, model::GammaCRMModel)
-  f =
-    x ->
-      model.mothertotalmass *
-      gamma(0, x * (1 + model.childrentotalmass * sum(@. log(1 + state.auxu))))
+  for m = 1:nmotherprocesses
+    f =
+      x ->
+        model.mothertotalmass * gamma(
+          0,
+          x * (
+            1 +
+            model.childrentotalmass *
+            sum(@. log(1 + state.auxu[state.groupcluslabels==m]))
+          ),
+        )
 
-  state.mothernonallocatedatoms.jumps = fergusonklass(f, 0.1)
+    state.mothernonallocatedatoms[m].jumps = fergusonklass(f, 0.1)
 
-  state.mothernonallocatedatoms.locations =
-    samplepriormotherloc(model, size(state.mothernonallocatedatoms.jumps)[1])
+    state.mothernonallocatedatoms[m].locations = samplepriormotherloc(
+      model,
+      size(state.mothernonallocatedatoms[m].jumps)[1],
+    )
 
-  state.mothernonallocatedatoms.counter =
-    zeros(size(state.mothernonallocatedatoms.jumps)[1])
+    state.mothernonallocatedatoms[m].counter =
+      zeros(size(state.mothernonallocatedatoms[m].jumps)[1])
+  end
 end
 
 function updatechildprocesses!(input::MCMCInput, state::MCMCState, model::Model)
@@ -503,7 +555,62 @@ function updatechildprocessnonalloc!(state::MCMCState, model::GammaCRMModel, l)
     zeros(size(state.childrennonallocatedatoms[l].jumps)[1])
 end
 
-function updatechildrenatomslabels!(state::MCMCState, model::GammaCRMModel)
+function updategroupandchildrenatomslabels!(
+  state::MCMCState,
+  model::GammaCRMModel,
+)
+  # Updates both the groupcluslabels and the childrenatomslabels.
+  oldgroupcluslabel = state.groupcluslabels[l]
+
+  logprobs = map(
+    m -> sum(
+      log.(
+        map(
+          phi ->
+            transpose(getalljumps(state, group = nothing, motherprocess = m)) *
+            pdf.(
+              getatomcenterednormals(
+                state,
+                model,
+                group = nothing,
+                motherprocess = m,
+              )
+            ),
+          phi,
+        ),
+        vcat(getalllocs(state, group = l)...),
+      ),
+    ),
+    Vector(1:model.nmotherprocesses),
+  )
+  logprobs .+= model.probsgroupclus
+  logprobs = logprobs .- logsumexp(logprobs)
+  state.groupcluslabels[l] = rand(Categorical(exp.(logprobs)))
+
+  groupcluslabelsischanged = oldgroupcluslabel != state.groupcluslabels[l]
+
+  if groupcluslabelsischanged
+    state.motherallocatedatoms[oldgroupcluslabel].counter .-=
+      StatsBase.counts(state.childrenatomslabels[l])
+
+    # Deallocate the mother process' atoms whose counter went to zero.
+    idxallocatedatom = 1
+    while idxallocatedatom <=
+          size(state.motherallocatedatoms[oldgroupcluslabel].counter)
+      if state.motherallocatedatoms[oldgroupcluslabel].counter[idxallocatedatom] ==
+         0
+        deallocateatom(
+          state,
+          idxallocatedatom,
+          group = nothing,
+          motherprocess = oldgroupcluslabel,
+        )
+      else
+        idxallocatedatom += 1
+      end
+    end
+  end
+
   g = size(state.auxu)[1]
 
   for l = 1:g
@@ -531,6 +638,7 @@ function updatechildrenatomslabels!(state::MCMCState, model::GammaCRMModel)
         h,
         false,
         true,
+        !groupcluslabelsischanged,
       )
     end
   end
@@ -547,6 +655,7 @@ function updatesingleatomlabel!(
   idx,
   wgroup,
   wasallocated,
+  meaningfulpastlabel,
 )
   #= Updates a single within group cluster label (wgroup==true) or a child
   process atom label (wgroup == false).
@@ -565,6 +674,9 @@ function updatesingleatomlabel!(
   - wasallocated: if the children atom, before this update, was already an
     allocated atom or not. If it was not allocated, the function allocates it.
     Always true when wgroup == true, there can't be a new data point.
+  - meaningfulpastlabel: if the label before this update has some meaning. It
+    governates if the function has to decrease the counter of the atom
+    related to the past label.
 
   jumps and normals are modified inside the function to remain coherent with
   possible updates of the mother atoms. nalloc is an integer, therefore its
@@ -592,7 +704,7 @@ function updatesingleatomlabel!(
 
   allocatedatoms, _ = getatomscont(state, group = group)
 
-  if wasallocated
+  if meaningfulpastlabel
     # Save the old clustering label of the atom.
     oldidx = labelsvec[idx]
 
@@ -638,6 +750,7 @@ function updatesingleatomlabel!(
         mothernalloc,
         l,
         sampledidx - nalloc,
+        false,
         false,
         false,
       )
@@ -688,9 +801,17 @@ function updatewgroupcluslabels!(
         i,
         true,
         true,
+        true,
       )
     end
   end
+end
+
+function updateprobsgroupclus!(state::MCMCState, model::GammaCRMModel)
+  postdirparams =
+    model.dirparam * ones(model.nmotherprocesses) +
+    StatsBase.counts(state.groupcluslabels)
+  state.probsgroupclus = rand(Dirichlet(postdirparams))
 end
 
 function updateauxu!(input::MCMCInput, state::MCMCState)
