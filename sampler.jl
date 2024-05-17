@@ -887,17 +887,34 @@ function updateprediction!(
     prediction[l][idx, :] = hcat(map(x -> pdf.(x, grid), normals)...) * jumps
   end
 
-  # Compute the density predictions for a new groups.
-  jumps = getalljumps(state, group = nothing)
-  jumps = jumps ./ sum(jumps)
-  normals =
-    Normal.(
-      getprocessmeans(state, model, group = nothing, onlyalloc = false),
-      sqrt.(
-        getprocessvars(state, model, group = nothing, onlyalloc = false) +
-        fill(getmixtvar(state, model), size(jumps)[1])
+  # Compute the density predictions for a new group.
+  jumps = []
+  normals = []
+  for m = 1:model.nmotherprocesses
+    jumpstemp = getalljumps(state, group = nothing, motherprocess = m)
+    jumps = vcat(jumps, @. state.probsgroupclus[m] * jumpstemp / sum(jumpstemp))
+    normals = vcat(
+      normals,
+      Normal.(
+        getprocessmeans(
+          state,
+          model,
+          group = nothing,
+          motherprocess = m,
+          onlyalloc = false,
+        ),
+        sqrt.(
+          getprocessvars(
+            state,
+            model,
+            group = nothing,
+            motherprocess = m,
+            onlyalloc = false,
+          ) + fill(getmixtvar(state, model), size(jumpstemp)[1])
+        ),
       ),
     )
+  end
   prediction[g+1][idx, :] = hcat(map(x -> pdf.(x, grid), normals)...) * jumps
 end
 
