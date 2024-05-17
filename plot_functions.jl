@@ -91,23 +91,28 @@ function plotdensitypredictions(
       plots,
       histogram(
         input.data[l],
-        normalize = :probability,
+        normalize = :pdf,
         color = :lightblue,
         label = nothing,
         bins = 12,
+        size = (1500, 700),
       ),
     )
     plot!(
       predictiongrid,
-      [
-        truedens[l],
-        vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
-      ],
+      truedens[l],
       title = "Group $l",
-      size = (1500, 700),
-      label = ["True density" "Predicted density"],
-      lw = 2,
-      color = [truedensclus[l], bestdensclus[l]],
+      label = "True density",
+      linewidth = 2,
+      linestyle = :dot,
+      color = truedensclus[l],
+    )
+    plot!(
+      predictiongrid,
+      vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
+      label = "Predicted density",
+      linewidth = 2,
+      color = bestdensclus[l],
     )
   end
 
