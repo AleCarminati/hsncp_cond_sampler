@@ -252,7 +252,7 @@ struct MCMCOutput
       [zeros(iterations, n[l]) for l = 1:g],
       zeros(iterations, g),
       [
-        [AtomsContainer() for _ = 1:model.nmotherprocesses] for _ = 1:iterations
+        [AtomsContainer() for _ = 1:iterations] for _ = 1:model.nmotherprocesses
       ],
     )
   end
@@ -295,7 +295,7 @@ function updatemcmcoutput!(
     output.groupcluslabels[idx, :] = deepcopy(state.groupcluslabels)
 
     for m in eachindex(state.motherallocatedatoms)
-      output.motherallocatedatoms[idx][m] =
+      output.motherallocatedatoms[m][idx] =
         deepcopy(state.motherallocatedatoms[m])
     end
   end
