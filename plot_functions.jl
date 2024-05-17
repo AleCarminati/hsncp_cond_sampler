@@ -4,6 +4,8 @@ function plotclustering(
   input::MCMCInput,
   trueclust,
   bestclust,
+  truedensclus,
+  bestdensclus,
   filename;
   distancetrueest = 1,
   distancegroups = 0.25,
@@ -24,6 +26,29 @@ function plotclustering(
     "Estimated - group " .* string.(1:input.g),
     "True - group " .* string.(1:input.g),
   )
+  availablemarkers = [
+    :circle,
+    :rect,
+    :star5,
+    :diamond,
+    :hexagon,
+    :cross,
+    :xcross,
+    :utriangle,
+    :dtriangle,
+    :pentagon,
+    :star4,
+    :star6,
+    :+,
+    :x,
+  ]
+  markervec = []
+  for l = 1:input.g
+    markervec = vcat(markervec, fill(availablemarkers[bestdensclus[l]], n[l]))
+  end
+  for l = 1:input.g
+    markervec = vcat(markervec, fill(availablemarkers[truedensclus[l]], n[l]))
+  end
 
   yvalues = vcat(fill.(ticksvalues[1:input.g], n)...)
   yvalues = vcat(yvalues, fill.(ticksvalues[input.g+1:2*input.g], n)...)
@@ -36,7 +61,8 @@ function plotclustering(
       yticks = (ticksvalues, tickslabels),
       legend = false,
       size = (1500, 700),
-      title = "Across-group clustering",
+      title = "Across-group and density clustering",
+      markershape = markervec,
     ),
     filename,
   )
@@ -47,6 +73,8 @@ function plotdensitypredictions(
   predictiongrid,
   truedens,
   prediction,
+  truedensclus,
+  bestdensclus,
   filename,
 )
   #= Creates a grid of plots:
@@ -79,6 +107,7 @@ function plotdensitypredictions(
       size = (1500, 700),
       label = ["True density" "Predicted density"],
       lw = 2,
+      color = [truedensclus[l], bestdensclus[l]],
     )
   end
 
@@ -91,6 +120,7 @@ function plotdensitypredictions(
       title = "Predictive density for a new observation in group $(input.g+1)",
       size = (1500, 700),
       legend = false,
+      color = :black,
     ),
   )
 
