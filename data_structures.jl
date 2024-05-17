@@ -101,6 +101,7 @@ mutable struct MCMCState
       [zeros(n[l]) for l = 1:g],
       [Int32[] for _ = 1:g],
       zeros(g),
+      zeros(m),
       [AtomsContainer() for _ = 1:g],
       [AtomsContainer() for _ = 1:g],
       [AtomsContainer() for _ = 1:m],
@@ -172,7 +173,7 @@ function deallocateatom!(
     the corresponding index in the vector of the children atoms clustering
     labels.=#
   if group == nothing
-    for l in findall(state.groupcluslabels == motherprocess)
+    for l in findall(state.groupcluslabels .== motherprocess)
       state.childrenatomslabels[l] .-= (state.childrenatomslabels[l] .> idx)
     end
   else
@@ -180,17 +181,17 @@ function deallocateatom!(
     # Get the index of the corresponding mother process atom.
     idxmotheratom = state.childrenatomslabels[group][idx]
     # Decrease the counter of the corresponding mother process atom.
-    state.motherallocatedatoms[state.groupcluslabels[l]].counter[idxmotheratom] -=
+    state.motherallocatedatoms[state.groupcluslabels[group]].counter[idxmotheratom] -=
       1
     # If the corresponding mother process atom does not have any associated
     # child processes' atoms, deallocate it.
-    if state.motherallocatedatoms[state.groupcluslabels[l]].counter[idxmotheratom] ==
+    if state.motherallocatedatoms[state.groupcluslabels[group]].counter[idxmotheratom] ==
        0
       deallocateatom!(
         state,
         idxmotheratom,
         group = nothing,
-        motherprocess = state.groupcluslabels[l],
+        motherprocess = state.groupcluslabels[group],
       )
     end
 
@@ -241,7 +242,7 @@ struct MCMCOutput
   groupcluslabels::Matrix{Int32}
   # A vector containing, for each iteration, the allocated atoms of the mother
   # process.
-  motherallocatedatoms::Vector{AtomsContainer}
+  motherallocatedatoms::Vector{Vector{AtomsContainer}}
 
   function MCMCOutput(iterations, g, n, model::GammaCRMModel)
     new(
@@ -250,7 +251,9 @@ struct MCMCOutput
       [zeros(iterations, n[l]) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
       zeros(iterations, g),
-      [AtomsContainer() for it = 1:iterations],
+      [
+        [AtomsContainer() for _ = 1:model.nmotherprocesses] for _ = 1:iterations
+      ],
     )
   end
 end
@@ -291,6 +294,9 @@ function updatemcmcoutput!(
 
     output.groupcluslabels[idx, :] = deepcopy(state.groupcluslabels)
 
-    output.motherallocatedatoms[idx] = deepcopy(state.motherallocatedatoms)
+    for m in eachindex(state.motherallocatedatoms)
+      output.motherallocatedatoms[idx][m] =
+        deepcopy(state.motherallocatedatoms[m])
+    end
   end
 end
