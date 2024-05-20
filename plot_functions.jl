@@ -71,22 +71,27 @@ end
 function plotdensitypredictions(
   input::MCMCInput,
   predictiongrid,
-  truedens,
   prediction,
-  truedensclus,
   bestdensclus,
-  filename,
+  filename;
+  truedens = nothing,
+  truedensclus = nothing,
+  groupsidx = nothing,
 )
   #= Creates a grid of plots:
-    - For each group, it plots the predictive density for a new data point in
-      that group, the density that generated data in that group and an histogram
-      of data in that group.
+    - For each group in groupsidx, it plots the predictive density for a new
+      data point in that group, the density that generated data in that group
+      and an histogram of data in that group.
     - It plots the predictive density for a new data point in a new group.
     =#
 
   plots = []
 
-  for l = 1:(input.g)
+  if groupsidx == nothing
+    groupsidx = 1:input.g
+  end
+
+  for l in groupsidx
     push!(
       plots,
       histogram(
@@ -99,15 +104,17 @@ function plotdensitypredictions(
         xlims = extrema(predictiongrid),
       ),
     )
-    plot!(
-      predictiongrid,
-      truedens[l],
-      title = "Group $l",
-      label = "True density",
-      linewidth = 2,
-      linestyle = :dot,
-      color = truedensclus[l],
-    )
+    if truedens != nothing
+      plot!(
+        predictiongrid,
+        truedens[l],
+        title = "Group $l",
+        label = "True density",
+        linewidth = 2,
+        linestyle = :dot,
+        color = truedensclus[l],
+      )
+    end
     plot!(
       predictiongrid,
       vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
