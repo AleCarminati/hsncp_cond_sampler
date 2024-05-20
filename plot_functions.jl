@@ -96,6 +96,7 @@ function plotdensitypredictions(
         label = nothing,
         bins = 12,
         size = (1500, 700),
+        xlims = extrema(predictiongrid),
       ),
     )
     plot!(
