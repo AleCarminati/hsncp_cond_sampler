@@ -579,28 +579,25 @@ function updategroupandchildrenatomslabels!(
 
     logprobs = map(
       m -> sum(
-        log.(
-          map(
-            phi ->
-              transpose(
-                getalljumps(state, group = nothing, motherprocess = m),
-              ) *
-              pdf.(
-                getatomcenterednormals(
-                  state,
-                  model,
-                  group = nothing,
-                  motherprocess = m,
-                ),
-                phi,
+        map(
+          phi -> logsumexp(
+            log.(getalljumps(state, group = nothing, motherprocess = m),) +
+            logpdf.(
+              getatomcenterednormals(
+                state,
+                model,
+                group = nothing,
+                motherprocess = m,
               ),
-            vcat(getalllocs(state, group = l)...),
+              phi,
+            ),
           ),
+          vcat(getalllocs(state, group = l)...),
         ),
       ),
       Vector(1:model.nmotherprocesses),
     )
-    logprobs .+= state.probsgroupclus
+    logprobs .+= log.(state.probsgroupclus)
     logprobs = logprobs .- logsumexp(logprobs)
     state.groupcluslabels[l] = rand(Categorical(exp.(logprobs)))
 
