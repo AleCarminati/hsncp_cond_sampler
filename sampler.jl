@@ -923,13 +923,12 @@ function hsncpmixturemodel_fit(
   burnin = burnin,
   thin = thin,
 )
-  # If not specified, initialize the grid to contain all the data points.
+  # If the grid is not specified, do not compute predictions.
   if grid == nothing
-    mindata = minimum([minimum(input.data[l]) for l = 1:input.g])
-    maxdata = maximum([maximum(input.data[l]) for l = 1:input.g])
-    grid = LinRange(mindata, maxdata, 1000)
+    prediction = nothing
+  else
+    prediction = [zeros(iterations, size(grid)[1]) for l = 1:(input.g+1)]
   end
-  prediction = [zeros(iterations, size(grid)[1]) for l = 1:(input.g+1)]
 
   state = MCMCState(input.g, input.n, model.nmotherprocesses)
   initalizemcmcstate!(input, state, model)
@@ -953,13 +952,15 @@ function hsncpmixturemodel_fit(
 
     if it > burnin && mod(it - burnin, thin) == 0
       updatemcmcoutput!(input, state, output, Int((it - burnin) / thin))
-      updateprediction!(
-        state,
-        model,
-        prediction,
-        grid,
-        Int((it - burnin) / thin),
-      )
+      if grid != nothing
+        updateprediction!(
+          state,
+          model,
+          prediction,
+          grid,
+          Int((it - burnin) / thin),
+        )
+      end
     end
   end
 
