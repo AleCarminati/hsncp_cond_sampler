@@ -75,6 +75,11 @@ mutable struct MCMCState
   # A vector containing, for each group, the clustering labels for each
   # allocated atom of the child process.
   childrenatomslabels::Vector{Vector{Int32}}
+  # A vector containing, for each group, its associated mother process label.
+  const groupcluslabels::Vector{Int32}
+  # A vector containing the probability for a generic group to be assigned to
+  # a mother atom.
+  const probsgroupclus::Vector{Float64}
   #= A vector containing, for each group, the allocated atoms of the children
   process. A atom is allocated if it is linked to at least one observation
   through the clustering labels. =#
@@ -85,31 +90,37 @@ mutable struct MCMCState
   #= A vector containing the allocated atoms of the mother process. A atom is
   allocated if it is linked to at least one allocated atom of the children
   processes throught the clustering labels. =#
-  const motherallocatedatoms::AtomsContainer
+  const motherallocatedatoms::Vector{AtomsContainer}
   # A vector containing the non allocated atoms of the mother process.
-  mothernonallocatedatoms::AtomsContainer
+  mothernonallocatedatoms::Vector{AtomsContainer}
 
-  function MCMCState(g, n)
+  function MCMCState(g, n, m)
     new(
       Float64[],
       zeros(g),
       [zeros(n[l]) for l = 1:g],
       [Int32[] for _ = 1:g],
+      zeros(g),
+      zeros(m),
       [AtomsContainer() for _ = 1:g],
       [AtomsContainer() for _ = 1:g],
-      AtomsContainer(),
-      AtomsContainer(),
+      [AtomsContainer() for _ = 1:m],
+      [AtomsContainer() for _ = 1:m],
     )
   end
 end
 
-function getatomscont(state::MCMCState; group = nothing)
+function getatomscont(
+  state::MCMCState;
+  group = nothing,
+  motherprocess = nothing,
+)
   # Returns the AtomsContainer of the allocated atoms and of the non allocated
   # atoms of the child process (if group is specified) or the mother process
-  # (if group is not specified).
+  # (if group is not specified) specified by motherprocess.
   if group == nothing
-    allocatedatoms = state.motherallocatedatoms
-    nonallocatedatoms = state.mothernonallocatedatoms
+    allocatedatoms = state.motherallocatedatoms[motherprocess]
+    nonallocatedatoms = state.mothernonallocatedatoms[motherprocess]
   else
     allocatedatoms = state.childrenallocatedatoms[group]
     nonallocatedatoms = state.childrennonallocatedatoms[group]
@@ -118,31 +129,40 @@ function getatomscont(state::MCMCState; group = nothing)
   return allocatedatoms, nonallocatedatoms
 end
 
-function getalljumps(state::MCMCState; group = nothing)
+function getalljumps(state::MCMCState; group = nothing, motherprocess = nothing)
   # Returns a vector containing all the jumps of the child process (if group is
-  # specified) or the mother process (if group is not specified).
+  # specified) or the mother process (if group is not specified) specified by
+  # motherprocess.
 
-  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
+  allocatedatoms, nonallocatedatoms =
+    getatomscont(state, group = group, motherprocess = motherprocess)
 
   return vcat(allocatedatoms.jumps, nonallocatedatoms.jumps)
 end
 
-function getalllocs(state::MCMCState; group = nothing)
+function getalllocs(state::MCMCState; group = nothing, motherprocess = nothing)
   # Returns a vector containing all the locations of the child process (if
   # group is specified) or the mother process (if group is not specified).
 
-  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
+  allocatedatoms, nonallocatedatoms =
+    getatomscont(state, group = group, motherprocess = motherprocess)
 
   return vcat(allocatedatoms.locations, nonallocatedatoms.locations)
 end
 
-function deallocateatom!(state::MCMCState, idx; group = nothing)
+function deallocateatom!(
+  state::MCMCState,
+  idx;
+  group = nothing,
+  motherprocess = nothing,
+)
   #= Removes the allocated atom with index idx of the child process (if group
     is specified) or the mother process (if group is not specified) from the
     list of the allocated atoms. It also modifies the other elements of the
     state to maintain coherency. =#
 
-  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
+  allocatedatoms, nonallocatedatoms =
+    getatomscont(state, group = group, motherprocess = motherprocess)
 
   # Move the atom from the list of allocated atoms to the list of non allocated
   # ones.
@@ -153,7 +173,7 @@ function deallocateatom!(state::MCMCState, idx; group = nothing)
     the corresponding index in the vector of the children atoms clustering
     labels.=#
   if group == nothing
-    for l in eachindex(state.childrenatomslabels)
+    for l in findall(state.groupcluslabels .== motherprocess)
       state.childrenatomslabels[l] .-= (state.childrenatomslabels[l] .> idx)
     end
   else
@@ -161,11 +181,18 @@ function deallocateatom!(state::MCMCState, idx; group = nothing)
     # Get the index of the corresponding mother process atom.
     idxmotheratom = state.childrenatomslabels[group][idx]
     # Decrease the counter of the corresponding mother process atom.
-    state.motherallocatedatoms.counter[idxmotheratom] -= 1
+    state.motherallocatedatoms[state.groupcluslabels[group]].counter[idxmotheratom] -=
+      1
     # If the corresponding mother process atom does not have any associated
     # child processes' atoms, deallocate it.
-    if state.motherallocatedatoms.counter[idxmotheratom] == 0
-      deallocateatom!(state, idxmotheratom, group = nothing)
+    if state.motherallocatedatoms[state.groupcluslabels[group]].counter[idxmotheratom] ==
+       0
+      deallocateatom!(
+        state,
+        idxmotheratom,
+        group = nothing,
+        motherprocess = state.groupcluslabels[group],
+      )
     end
 
     # Remove the clustering label for the selected atom. Indeed, the state does
@@ -176,14 +203,20 @@ function deallocateatom!(state::MCMCState, idx; group = nothing)
   end
 end
 
-function allocateatom!(state::MCMCState, idx; group = nothing)
+function allocateatom!(
+  state::MCMCState,
+  idx;
+  group = nothing,
+  motherprocess = nothing,
+)
   #= Adds the idx-indexed non allocated atom of the child process (if group is
     specified) or the mother process (if group is not specified) to the list of
     allocated atoms.
     This function does not change any clustering labels and it initializes the
     counter of the selected atom to 0. =#
 
-  allocatedatoms, nonallocatedatoms = getatomscont(state, group = group)
+  allocatedatoms, nonallocatedatoms =
+    getatomscont(state, group = group, motherprocess = motherprocess)
 
   # Move the atom from the list of allocated atoms to the list of non allocated
   # ones.
@@ -204,9 +237,12 @@ struct MCMCOutput
   # A g-length vector of (iterations, n_l) containing, for each iteration, the
   # within-group clustering label for each observation.
   agroupcluslabels::Array{Array{Int32}}
+  # A (iterations, g) matrix containing, for each iterations, the cluster labels
+  # for each group.
+  groupcluslabels::Matrix{Int32}
   # A vector containing, for each iteration, the allocated atoms of the mother
   # process.
-  motherallocatedatoms::Vector{AtomsContainer}
+  motherallocatedatoms::Vector{Vector{AtomsContainer}}
 
   function MCMCOutput(iterations, g, n, model::GammaCRMModel)
     new(
@@ -214,7 +250,10 @@ struct MCMCOutput
       [zeros(iterations, n[l], 1) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
       [zeros(iterations, n[l]) for l = 1:g],
-      [AtomsContainer() for it = 1:iterations],
+      zeros(iterations, g),
+      [
+        [AtomsContainer() for _ = 1:iterations] for _ = 1:model.nmotherprocesses
+      ],
     )
   end
 end
@@ -253,6 +292,11 @@ function updatemcmcoutput!(
     output.agroupcluslabels[l][idx, :] =
       deepcopy(state.childrenatomslabels[l][state.wgroupcluslabels[l]])
 
-    output.motherallocatedatoms[idx] = deepcopy(state.motherallocatedatoms)
+    output.groupcluslabels[idx, :] = deepcopy(state.groupcluslabels)
+
+    for m in eachindex(state.motherallocatedatoms)
+      output.motherallocatedatoms[m][idx] =
+        deepcopy(state.motherallocatedatoms[m])
+    end
   end
 end

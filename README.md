@@ -1,5 +1,5 @@
-# A Conditional Sampler for Hierarchical Shot Noise Cox Process mixture models
-This repository contains the Julia code to run a conditional sampler for the Hierarchical Shot Noise Cox Process (HSNCP) mixture models.
+# A Conditional Sampler for the Nested Hierarchical Shot Noise Cox Process mixture models
+This repository contains the Julia code to run a conditional sampler for the Nested Hierarchical Shot Noise Cox Process (HSNCP) mixture models.
 
 ## Contributing
 

@@ -4,6 +4,8 @@ function plotclustering(
   input::MCMCInput,
   trueclust,
   bestclust,
+  truedensclus,
+  bestdensclus,
   filename;
   distancetrueest = 1,
   distancegroups = 0.25,
@@ -24,6 +26,29 @@ function plotclustering(
     "Estimated - group " .* string.(1:input.g),
     "True - group " .* string.(1:input.g),
   )
+  availablemarkers = [
+    :circle,
+    :rect,
+    :star5,
+    :diamond,
+    :hexagon,
+    :cross,
+    :xcross,
+    :utriangle,
+    :dtriangle,
+    :pentagon,
+    :star4,
+    :star6,
+    :+,
+    :x,
+  ]
+  markervec = []
+  for l = 1:input.g
+    markervec = vcat(markervec, fill(availablemarkers[bestdensclus[l]], n[l]))
+  end
+  for l = 1:input.g
+    markervec = vcat(markervec, fill(availablemarkers[truedensclus[l]], n[l]))
+  end
 
   yvalues = vcat(fill.(ticksvalues[1:input.g], n)...)
   yvalues = vcat(yvalues, fill.(ticksvalues[input.g+1:2*input.g], n)...)
@@ -36,49 +61,110 @@ function plotclustering(
       yticks = (ticksvalues, tickslabels),
       legend = false,
       size = (1500, 700),
-      title = "Across-group clustering",
+      title = "Across-group and density clustering",
+      markershape = markervec,
     ),
     filename,
   )
 end
 
+function plotgroupeddensitypredictions(
+  input::MCMCInput,
+  predictiongrid,
+  prediction,
+  bestdensclus,
+  filename;
+)
+  #= For each density cluster plots the predictive density for a new
+    data point in each group in that density cluster. =#
+
+  plots = []
+
+  for m in unique(bestdensclus)
+    first = true
+    for l in findall(bestdensclus .== m)
+      if first
+        push!(
+          plots,
+          plot(
+            predictiongrid,
+            vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
+            title = "Cluster $m",
+            linewidth = 2,
+            color = bestdensclus[l],
+            size = (1500, 700),
+            xlims = extrema(predictiongrid),
+            legend = false,
+          ),
+        )
+        first = false
+      else
+        plot!(
+          predictiongrid,
+          vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
+          linewidth = 2,
+          color = bestdensclus[l],
+        )
+      end
+    end
+  end
+
+  savefig(plot(plots...), filename)
+end
+
 function plotdensitypredictions(
   input::MCMCInput,
   predictiongrid,
-  truedens,
   prediction,
-  filename,
+  bestdensclus,
+  filename;
+  truedens = nothing,
+  truedensclus = nothing,
+  groupsidx = nothing,
 )
   #= Creates a grid of plots:
-    - For each group, it plots the predictive density for a new data point in
-      that group, the density that generated data in that group and an histogram
-      of data in that group.
+    - For each group in groupsidx, it plots the predictive density for a new
+      data point in that group, the density that generated data in that group
+      and an histogram of data in that group.
     - It plots the predictive density for a new data point in a new group.
     =#
 
   plots = []
 
-  for l = 1:(input.g)
+  if groupsidx == nothing
+    groupsidx = 1:input.g
+  end
+
+  for l in groupsidx
     push!(
       plots,
       histogram(
         input.data[l],
-        normalize = :probability,
+        normalize = :pdf,
         color = :lightblue,
         label = nothing,
         bins = 12,
+        size = (1500, 700),
+        xlims = extrema(predictiongrid),
       ),
     )
+    if truedens != nothing
+      plot!(
+        predictiongrid,
+        truedens[l],
+        title = "Group $l",
+        label = "True density",
+        linewidth = 2,
+        linestyle = :dot,
+        color = truedensclus[l],
+      )
+    end
     plot!(
       predictiongrid,
-      [
-        truedens[l],
-        vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
-      ],
-      title = "Group $l",
-      size = (1500, 700),
-      label = ["True density" "Predicted density"],
-      lw = 2,
+      vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
+      label = "Predicted density",
+      linewidth = 2,
+      color = bestdensclus[l],
     )
   end
 
@@ -91,6 +177,7 @@ function plotdensitypredictions(
       title = "Predictive density for a new observation in group $(input.g+1)",
       size = (1500, 700),
       legend = false,
+      color = :black,
     ),
   )
 

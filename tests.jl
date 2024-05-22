@@ -30,6 +30,7 @@ function checkchildrenatomslabelsnogaps(state::MCMCState)
       return false
     end
   end
+
   return true
 end
 
@@ -50,19 +51,29 @@ function checkchildrencluscount(state::MCMCState)
 end
 
 function checkmothercluscount(state::MCMCState)
-  # Check if the saved counters are correct.
-  g = size(state.wgroupcluslabels)[1]
+  # Check if the saved counters are correct. This is done only for the mother
+  # processes that are connected to at least one group.
+  for m in findall(StatsBase.counts(state.groupcluslabels) .> 0)
+    maxlabel = maximum(
+      map(
+        x -> maximum(state.childrenatomslabels[x]),
+        findall(state.groupcluslabels .== m),
+      ),
+    )
 
-  maxlabel =
-    maximum(map(x -> maximum(state.childrenatomslabels[x]), Vector(1:g)))
-
-  for label = 1:maxlabel
-    totcounter =
-      sum(map(x -> sum(state.childrenatomslabels[x] .== label), Vector(1:g)))
-    if totcounter != state.motherallocatedatoms.counter[label]
-      return false
+    for label = 1:maxlabel
+      totcounter = sum(
+        map(
+          x -> sum(state.childrenatomslabels[x] .== label),
+          findall(state.groupcluslabels .== m),
+        ),
+      )
+      if totcounter != state.motherallocatedatoms[m].counter[label]
+        return false
+      end
     end
   end
+
   return true
 end
 
@@ -82,13 +93,22 @@ end
 
 function checkmotheratomcontainerlength(state::MCMCState)
   # Check if the number of allocated atoms in the mother process is equal to
-  # the maximum label.
-  g = size(state.wgroupcluslabels)[1]
+  # the maximum label. This is done only for the mother
+  # processes that are connected to at least one group.
+  for m in findall(StatsBase.counts(state.groupcluslabels) .> 0)
+    maxlabel = maximum(
+      map(
+        x -> maximum(state.childrenatomslabels[x]),
+        findall(state.groupcluslabels .== m),
+      ),
+    )
 
-  maxlabel =
-    maximum(map(x -> maximum(state.childrenatomslabels[x]), Vector(1:g)))
+    if maxlabel != size(state.motherallocatedatoms[m].counter)[1]
+      return false
+    end
+  end
 
-  return maxlabel == size(state.motherallocatedatoms.counter)[1]
+  return true
 end
 
 function teststate(state::MCMCState)
@@ -106,25 +126,28 @@ end
     n = 100
     data = [rand(n) for l = 1:g]
     input = MCMCInput(data)
-    state = MCMCState(input.g, input.n)
+    state = MCMCState(input.g, input.n, 2)
+
+    state.groupcluslabels[1] = 1
+    state.groupcluslabels[2] = 2
 
     state.childrenatomslabels[1] = fill(2, 10)
     state.childrenatomslabels[2] = fill(2, 10)
 
-    push!(state.motherallocatedatoms.locations, [3], [4])
-    push!(state.motherallocatedatoms.jumps, 30, 40)
-    push!(state.motherallocatedatoms.counter, 0, 4)
+    push!(state.motherallocatedatoms[2].locations, [3], [4])
+    push!(state.motherallocatedatoms[2].jumps, 30, 40)
+    push!(state.motherallocatedatoms[2].counter, 0, 4)
 
-    deallocateatom!(state, 1, group = nothing)
+    deallocateatom!(state, 1, group = nothing, motherprocess = 2)
 
-    @test state.childrenatomslabels[1] == fill(1, 10)
+    @test state.childrenatomslabels[1] == fill(2, 10)
     @test state.childrenatomslabels[2] == fill(1, 10)
-    @test state.motherallocatedatoms.locations == [[4]]
-    @test state.mothernonallocatedatoms.locations == [[3]]
-    @test state.motherallocatedatoms.jumps == [40]
-    @test state.mothernonallocatedatoms.jumps == [30]
-    @test state.motherallocatedatoms.counter == [4]
-    @test state.mothernonallocatedatoms.counter == [0]
+    @test state.motherallocatedatoms[2].locations == [[4]]
+    @test state.mothernonallocatedatoms[2].locations == [[3]]
+    @test state.motherallocatedatoms[2].jumps == [40]
+    @test state.mothernonallocatedatoms[2].jumps == [30]
+    @test state.motherallocatedatoms[2].counter == [4]
+    @test state.mothernonallocatedatoms[2].counter == [0]
   end
 
   @testset "Deallocate children atom" begin
@@ -132,7 +155,9 @@ end
     n = 100
     data = [rand(n) for l = 1:g]
     input = MCMCInput(data)
-    state = MCMCState(input.g, input.n)
+    state = MCMCState(input.g, input.n, 2)
+
+    state.groupcluslabels[2] = 2
 
     state.wgroupcluslabels[2] .= fill(2, n)
 
@@ -142,9 +167,9 @@ end
 
     state.childrenatomslabels[2] = [1, 2]
 
-    push!(state.motherallocatedatoms.locations, [3], [4])
-    push!(state.motherallocatedatoms.jumps, 30, 40)
-    push!(state.motherallocatedatoms.counter, 1, 1)
+    push!(state.motherallocatedatoms[2].locations, [3], [4])
+    push!(state.motherallocatedatoms[2].jumps, 30, 40)
+    push!(state.motherallocatedatoms[2].counter, 1, 1)
 
     deallocateatom!(state, 1, group = 2)
 
@@ -155,12 +180,12 @@ end
     @test state.childrenallocatedatoms[2].counter == [n]
     @test state.wgroupcluslabels[2] == fill(1, n)
     @test state.childrenatomslabels[2] == [1]
-    @test state.motherallocatedatoms.locations == [[4]]
-    @test state.mothernonallocatedatoms.locations == [[3]]
-    @test state.motherallocatedatoms.jumps == [40]
-    @test state.mothernonallocatedatoms.jumps == [30]
-    @test state.motherallocatedatoms.counter == [1]
-    @test state.mothernonallocatedatoms.counter == [0]
+    @test state.motherallocatedatoms[2].locations == [[4]]
+    @test state.mothernonallocatedatoms[2].locations == [[3]]
+    @test state.motherallocatedatoms[2].jumps == [40]
+    @test state.mothernonallocatedatoms[2].jumps == [30]
+    @test state.motherallocatedatoms[2].counter == [1]
+    @test state.mothernonallocatedatoms[2].counter == [0]
   end
 
   @testset "Allocate mother atom" begin
@@ -168,23 +193,23 @@ end
     n = 100
     data = [rand(n) for l = 1:g]
     input = MCMCInput(data)
-    state = MCMCState(input.g, input.n)
+    state = MCMCState(input.g, input.n, 2)
 
-    push!(state.motherallocatedatoms.locations, [3])
-    push!(state.motherallocatedatoms.jumps, 30)
-    push!(state.motherallocatedatoms.counter, 1)
-    push!(state.mothernonallocatedatoms.locations, [4])
-    push!(state.mothernonallocatedatoms.jumps, 40)
-    push!(state.mothernonallocatedatoms.counter, 0)
+    push!(state.motherallocatedatoms[2].locations, [3])
+    push!(state.motherallocatedatoms[2].jumps, 30)
+    push!(state.motherallocatedatoms[2].counter, 1)
+    push!(state.mothernonallocatedatoms[2].locations, [4])
+    push!(state.mothernonallocatedatoms[2].jumps, 40)
+    push!(state.mothernonallocatedatoms[2].counter, 0)
 
-    allocateatom!(state, 1, group = nothing)
+    allocateatom!(state, 1, group = nothing, motherprocess = 2)
 
-    @test state.motherallocatedatoms.locations == [[3], [4]]
-    @test state.mothernonallocatedatoms.locations == []
-    @test state.motherallocatedatoms.jumps == [30, 40]
-    @test state.mothernonallocatedatoms.jumps == []
-    @test state.motherallocatedatoms.counter == [1, 0]
-    @test state.mothernonallocatedatoms.counter == []
+    @test state.motherallocatedatoms[2].locations == [[3], [4]]
+    @test state.mothernonallocatedatoms[2].locations == []
+    @test state.motherallocatedatoms[2].jumps == [30, 40]
+    @test state.mothernonallocatedatoms[2].jumps == []
+    @test state.motherallocatedatoms[2].counter == [1, 0]
+    @test state.mothernonallocatedatoms[2].counter == []
   end
 
   @testset "Allocate children atom" begin
@@ -192,23 +217,23 @@ end
     n = 100
     data = [rand(n) for l = 1:g]
     input = MCMCInput(data)
-    state = MCMCState(input.g, input.n)
+    state = MCMCState(input.g, input.n, 2)
 
-    push!(state.motherallocatedatoms.locations, [1])
-    push!(state.motherallocatedatoms.jumps, 10)
-    push!(state.motherallocatedatoms.counter, 1)
-    push!(state.mothernonallocatedatoms.locations, [2])
-    push!(state.mothernonallocatedatoms.jumps, 20)
-    push!(state.mothernonallocatedatoms.counter, 0)
+    push!(state.childrenallocatedatoms[2].locations, [1])
+    push!(state.childrenallocatedatoms[2].jumps, 10)
+    push!(state.childrenallocatedatoms[2].counter, n)
+    push!(state.childrennonallocatedatoms[2].locations, [2])
+    push!(state.childrennonallocatedatoms[2].jumps, 20)
+    push!(state.childrennonallocatedatoms[2].counter, 0)
 
-    allocateatom!(state, 1, group = nothing)
+    allocateatom!(state, 1, group = 2)
 
-    @test state.motherallocatedatoms.locations == [[1], [2]]
-    @test state.mothernonallocatedatoms.locations == []
-    @test state.motherallocatedatoms.jumps == [10, 20]
-    @test state.mothernonallocatedatoms.jumps == []
-    @test state.motherallocatedatoms.counter == [1, 0]
-    @test state.mothernonallocatedatoms.counter == []
+    @test state.childrenallocatedatoms[2].locations == [[1], [2]]
+    @test state.childrennonallocatedatoms[2].locations == []
+    @test state.childrenallocatedatoms[2].jumps == [10, 20]
+    @test state.childrennonallocatedatoms[2].jumps == []
+    @test state.childrenallocatedatoms[2].counter == [n, 0]
+    @test state.childrennonallocatedatoms[2].counter == []
   end
 end
 
@@ -229,8 +254,10 @@ end
     motherlocsd = 6,
     motherlocshape = 5,
     motherlocscale = 5,
+    nmotherprocesses = 2,
+    dirparam = 1,
   )
-  state = MCMCState(input.g, input.n)
+  state = MCMCState(input.g, input.n, model.nmotherprocesses)
 
   @testset "Initalization" begin
     initalizemcmcstate!(input, state, model)
@@ -245,7 +272,7 @@ end
   end
 
   @testset "Update mother process" begin
-    updatemotherprocess!(state, model)
+    updatemotherprocesses!(state, model)
 
     teststate(state)
   end
@@ -256,8 +283,8 @@ end
     teststate(state)
   end
 
-  @testset "Update child atoms labels" begin
-    updatechildprocesses!(input, state, model)
+  @testset "Update group and child atoms labels" begin
+    updategroupandchildrenatomslabels!(input, state, model)
 
     teststate(state)
   end
