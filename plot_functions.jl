@@ -68,6 +68,50 @@ function plotclustering(
   )
 end
 
+function plotgroupeddensitypredictions(
+  input::MCMCInput,
+  predictiongrid,
+  prediction,
+  bestdensclus,
+  filename;
+)
+  #= For each density cluster plots the predictive density for a new
+    data point in each group in that density cluster. =#
+
+  plots = []
+
+  for m in unique(bestdensclus)
+    first = true
+    for l in findall(bestdensclus .== m)
+      if first
+        push!(
+          plots,
+          plot(
+            predictiongrid,
+            vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
+            title = "Cluster $m",
+            linewidth = 2,
+            color = bestdensclus[l],
+            size = (1500, 700),
+            xlims = extrema(predictiongrid),
+            legend = false,
+          ),
+        )
+        first = false
+      else
+        plot!(
+          predictiongrid,
+          vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
+          linewidth = 2,
+          color = bestdensclus[l],
+        )
+      end
+    end
+  end
+
+  savefig(plot(plots...), filename)
+end
+
 function plotdensitypredictions(
   input::MCMCInput,
   predictiongrid,
