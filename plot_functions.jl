@@ -225,6 +225,8 @@ function atomsvalues(atomsvector, model::GammaCRMModel; value = "jump")
       ),
       1:natoms,
     )
+  elseif value == "natoms"
+    values = vecmaxatoms
   else
     error("Invalid value: '$input_string'")
   end
