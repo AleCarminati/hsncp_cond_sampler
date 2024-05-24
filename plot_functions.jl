@@ -184,7 +184,12 @@ function plotdensitypredictions(
   savefig(plot(plots...), filename)
 end
 
-function atomsvalues(atomsvector, model::GammaCRMModel; value = "jump")
+function atomsvalues(
+  atomsvector,
+  model::GammaCRMModel;
+  value = "jump",
+  iterations = nothing,
+)
   #= Helper function that, given a vector of AtomsContainer, returns, for each
     atom, a vector containing its values. If the atom is not allocated in that
     a certain iteration, it returns the "missing" value. =#
@@ -192,6 +197,11 @@ function atomsvalues(atomsvector, model::GammaCRMModel; value = "jump")
   niterations = size(atomsvector)[1]
   vecmaxatoms = map(x -> size(x.jumps)[1], atomsvector)
   natoms = maximum(vecmaxatoms)
+
+  # If the iterations are not specified, return the values in every iteration.
+  if iterations == nothing
+    iterations = 1:niterations
+  end
 
   if value == "jump"
     values = map(
