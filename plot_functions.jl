@@ -121,18 +121,36 @@ function plotdensitypredictions(
   truedens = nothing,
   truedensclus = nothing,
   groupsidx = nothing,
+  plotprednewgroup = true,
+  layout = nothing,
 )
   #= Creates a grid of plots:
     - For each group in groupsidx, it plots the predictive density for a new
       data point in that group, the density that generated data in that group
       and an histogram of data in that group.
     - It plots the predictive density for a new data point in a new group.
+
+    # Optional Arguments
+    - `truedens`: True densities for each group. If not provided, the true
+      densities are not drawn.
+    - `truedensclus`: Cluster assignments for the true densities. They must
+      be provided if and only if `truedens` is provided.
+    - `groupsidx`: Indices of the groups to plot (default is `nothing`,
+      plots all groups).
+    - `plotprednewgroup`: Boolean to plot the predictive density for a new group
+      (default is `true`).
+    - `layout`: Layout of the plot grid (default is the default layout set by
+      the Plots package).
     =#
 
   plots = []
 
   if groupsidx == nothing
     groupsidx = 1:input.g
+  end
+
+  if layout == nothing
+    layout = size(groupsidx)[1] + plotprednewgroup
   end
 
   for l in groupsidx
@@ -168,20 +186,22 @@ function plotdensitypredictions(
     )
   end
 
-  push!(
-    plots,
-    plot(
-      predictiongrid,
-      vec(sum(prediction[input.g+1], dims = 1)) ./
-      size(prediction[input.g+1])[1],
-      title = "Predictive density for a new observation in group $(input.g+1)",
-      size = (1500, 700),
-      legend = false,
-      color = :black,
-    ),
-  )
+  if plotprednewgroup
+    push!(
+      plots,
+      plot(
+        predictiongrid,
+        vec(sum(prediction[input.g+1], dims = 1)) ./
+        size(prediction[input.g+1])[1],
+        title = "Predictive density for a new observation in group $(input.g+1)",
+        size = (1500, 700),
+        legend = false,
+        color = :black,
+      ),
+    )
+  end
 
-  savefig(plot(plots...), filename)
+  savefig(plot(plots..., layout = layout), filename)
 end
 
 function atomsvalues(
