@@ -74,6 +74,7 @@ function plotgroupeddensitypredictions(
   prediction,
   bestdensclus,
   filename;
+  sizefig = (600, 400),
 )
   #= For each density cluster plots the predictive density for a new
     data point in each group in that density cluster. =#
@@ -92,7 +93,6 @@ function plotgroupeddensitypredictions(
             title = "Cluster $m",
             linewidth = 2,
             color = bestdensclus[l],
-            size = (1500, 700),
             xlims = extrema(predictiongrid),
             legend = false,
           ),
@@ -109,26 +109,29 @@ function plotgroupeddensitypredictions(
     end
   end
 
-  savefig(plot(plots...), filename)
+  savefig(plot(plots..., size = sizefig), filename)
 end
 
 function plotdensitypredictions(
   input::MCMCInput,
   predictiongrid,
   prediction,
+  bestclus,
   bestdensclus,
-  filename;
+  filename,
+  plotargs;
   truedens = nothing,
   truedensclus = nothing,
   groupsidx = nothing,
   plotprednewgroup = true,
-  layout = nothing,
+  datarepresentation = "histogram",
 )
   #= Creates a grid of plots:
     - For each group in groupsidx, it plots the predictive density for a new
       data point in that group, the density that generated data in that group
       and an histogram of data in that group.
     - It plots the predictive density for a new data point in a new group.
+    Plotargs must be a dictionary containing the keyword arguments for the plot.
 
     # Optional Arguments
     - `truedens`: True densities for each group. If not provided, the true
@@ -139,9 +142,8 @@ function plotdensitypredictions(
       plots all groups).
     - `plotprednewgroup`: Boolean to plot the predictive density for a new group
       (default is `true`).
-    - `layout`: Layout of the plot grid (default is the default layout set by
-      the Plots package).
-    =#
+    - `datarepresentation`: keywords that says how to represent data. Valid
+      values are `histogram` (default), `scatter`, `none`. =#
 
   plots = []
 
@@ -149,30 +151,40 @@ function plotdensitypredictions(
     groupsidx = 1:input.g
   end
 
-  if layout == nothing
-    layout = size(groupsidx)[1] + plotprednewgroup
-  end
-
   for l in groupsidx
-    push!(
-      plots,
-      histogram(
-        input.data[l],
-        normalize = :pdf,
-        color = :lightblue,
-        label = nothing,
-        bins = 12,
-        size = (1500, 700),
-        xlims = extrema(predictiongrid),
-      ),
-    )
+    if datarepresentation == "histogram"
+      push!(
+        plots,
+        histogram(
+          input.data[l],
+          normalize = :pdf,
+          color = :lightblue,
+          label = nothing,
+          bins = 12,
+          xlims = extrema(predictiongrid),
+        ),
+      )
+    elseif datarepresentation == "scatter"
+      push!(
+        plots,
+        scatter(
+          input.data[l],
+          zeros(size(input.data[l])),
+          color = bestclus[(cumsum(input.n)[l]-input.n[l]+1):cumsum(input.n)[l]],
+          label = nothing,
+          xlims = extrema(predictiongrid),
+        ),
+      )
+    else
+      push!(plots, plot())
+    end
+
     if truedens != nothing
       plot!(
         predictiongrid,
         truedens[l],
         title = "Group $l",
         label = "True density",
-        linewidth = 2,
         linestyle = :dot,
         color = truedensclus[l],
       )
@@ -181,7 +193,6 @@ function plotdensitypredictions(
       predictiongrid,
       vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
       label = "Predicted density",
-      linewidth = 2,
       color = bestdensclus[l],
     )
   end
@@ -194,14 +205,13 @@ function plotdensitypredictions(
         vec(sum(prediction[input.g+1], dims = 1)) ./
         size(prediction[input.g+1])[1],
         title = "Predictive density for a new observation in group $(input.g+1)",
-        size = (1500, 700),
         legend = false,
         color = :black,
       ),
     )
   end
 
-  savefig(plot(plots..., layout = layout), filename)
+  savefig(plot(plots...; plotargs...), filename)
 end
 
 function atomsvalues(
