@@ -183,7 +183,6 @@ function plotdensitypredictions(
       plot!(
         predictiongrid,
         truedens[l],
-        title = "Group $l",
         label = "True density",
         linestyle = :dot,
         color = truedensclus[l],
@@ -194,6 +193,7 @@ function plotdensitypredictions(
       vec(sum(prediction[l], dims = 1)) ./ size(prediction[l])[1],
       label = "Predicted density",
       color = bestdensclus[l],
+      title = "Group $l",
     )
   end
 
