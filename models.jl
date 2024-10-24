@@ -41,6 +41,7 @@ abstract type GammaCRMModel <: Model end
 
   # Hyperparameters for the Gamma CRM of the mother process.
   mothertotalmass::Float64
+  motherlocmean::Float64
   motherlocsd::Float64
 
   # The number of mother processes.
@@ -52,7 +53,7 @@ abstract type GammaCRMModel <: Model end
 end
 
 function samplepriormotherloc(model::NormalMeanModel, n)
-  return rand.(fill(Normal(0, model.motherlocsd), n), 1)
+  return rand.(fill(Normal(model.motherlocmean, model.motherlocsd), n), 1)
 end
 
 function samplechildloc(model::NormalMeanModel, associatedmotheratomloc)
@@ -91,6 +92,7 @@ end
 
   # Hyperparameters for the Gamma CRM of the mother process.
   mothertotalmass::Float64
+  motherlocmean::Float64
   motherlocsd::Float64
   motherlocshape::Float64
   motherlocscale::Float64
@@ -134,6 +136,7 @@ end
 
   # Hyperparameters for the Gamma CRM of the mother process.
   mothertotalmass::Float64
+  motherlocmean::Float64
   motherlocsd::Float64
   motherlocshape::Float64
   motherlocscale::Float64
@@ -152,7 +155,7 @@ function samplepriormotherloc(
 )
   returnvec = [zeros(2) for _ = 1:n]
   for idx = 1:n
-    returnvec[idx][1] = rand(Normal(0, model.motherlocsd))
+    returnvec[idx][1] = rand(Normal(model.motherlocmean, model.motherlocsd))
     returnvec[idx][2] =
       rand(InverseGamma(model.motherlocshape, model.motherlocscale))
   end

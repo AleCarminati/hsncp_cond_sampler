@@ -391,12 +391,15 @@ function updatemotherprocessesallocmeans!(
       1:size(state.motherallocatedatoms[m].jumps)[1],
     )
 
-    means = @. sums / $getprocessvars(
-      state,
-      model,
-      group = nothing,
-      motherprocess = m,
-      onlyalloc = true,
+    means = @. (
+      model.motherlocmean / (model.motherlocsd^2) +
+      sums / $getprocessvars(
+        state,
+        model,
+        group = nothing,
+        motherprocess = m,
+        onlyalloc = true,
+      )
     ) * standevs^2
 
     normals = Normal.(means, standevs)
