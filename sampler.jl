@@ -138,7 +138,7 @@ function getmixtvar(state::MCMCState, model::NormalMeanVarVarModel)
   return state.mixtparams[1]
 end
 
-function initalizemcmcstate!(
+function initializemcmcstate!(
   input::MCMCInput,
   state::MCMCState,
   model::GammaCRMModel,
@@ -301,11 +301,11 @@ function updatemixtparams!(
   state.mixtparams[1] = rand(InverseGamma(postshape, postscale))
 end
 
-function updatemotherprocesses!(state::MCMCState, model::Model)
+function updatemotherprocesses!(state::MCMCState, model::Model, fkthreshold)
   # Update the allocated atoms of the mother processes.
   updatemotherprocessesalloc!(state, model)
   # Update the non allocated atoms of the mother processes.
-  updatemotherprocessesnonalloc!(state, model)
+  updatemotherprocessesnonalloc!(state, model, fkthreshold)
 end
 
 function updatemotherprocessesalloc!(state::MCMCState, model::NormalMeanModel)
@@ -446,7 +446,11 @@ function updatemotherprocessesallocvars!(
   end
 end
 
-function updatemotherprocessesnonalloc!(state::MCMCState, model::GammaCRMModel)
+function updatemotherprocessesnonalloc!(
+  state::MCMCState,
+  model::GammaCRMModel,
+  fkthreshold,
+)
   for m = 1:model.nmotherprocesses
     f =
       x ->
@@ -459,7 +463,7 @@ function updatemotherprocessesnonalloc!(state::MCMCState, model::GammaCRMModel)
           ),
         )
 
-    state.mothernonallocatedatoms[m].jumps = fergusonklass(f, 0.1)
+    state.mothernonallocatedatoms[m].jumps = fergusonklass(f, fkthreshold)
 
     state.mothernonallocatedatoms[m].locations = samplepriormotherloc(
       model,
@@ -471,12 +475,17 @@ function updatemotherprocessesnonalloc!(state::MCMCState, model::GammaCRMModel)
   end
 end
 
-function updatechildprocesses!(input::MCMCInput, state::MCMCState, model::Model)
+function updatechildprocesses!(
+  input::MCMCInput,
+  state::MCMCState,
+  model::Model,
+  fkthreshold,
+)
   for l = 1:input.g
     # Update the allocated atoms of the mother process.
     updatechildprocessalloc!(input, state, model, l)
     # Update the non allocated atoms of the mother process.
-    updatechildprocessnonalloc!(state, model, l)
+    updatechildprocessnonalloc!(state, model, l, fkthreshold)
   end
 end
 
@@ -537,10 +546,15 @@ function updatechildprocessalloc!(
   state.childrenallocatedatoms[l].locations[:] = rand.(normals, 1)
 end
 
-function updatechildprocessnonalloc!(state::MCMCState, model::GammaCRMModel, l)
+function updatechildprocessnonalloc!(
+  state::MCMCState,
+  model::GammaCRMModel,
+  l,
+  fkthreshold,
+)
   f = x -> model.childrentotalmass * gamma(0, x * (1 + state.auxu[l]))
 
-  state.childrennonallocatedatoms[l].jumps = fergusonklass(f, 0.1)
+  state.childrennonallocatedatoms[l].jumps = fergusonklass(f, fkthreshold)
 
   # For each non allocated atom of the child process, sample which atom of
   # the mother process it is associated with, using the jumps of the mother
@@ -919,6 +933,7 @@ function hsncpmixturemodel_fit(
   input::MCMCInput,
   model::Model;
   grid = nothing,
+  fkthreshold = 0.1,
   iterations = iterations,
   burnin = burnin,
   thin = thin,
@@ -931,7 +946,7 @@ function hsncpmixturemodel_fit(
   end
 
   state = MCMCState(input.g, input.n, model.nmotherprocesses)
-  initalizemcmcstate!(input, state, model)
+  initializemcmcstate!(input, state, model)
 
   output = MCMCOutput(iterations, input.g, input.n, model)
 
@@ -940,9 +955,9 @@ function hsncpmixturemodel_fit(
 
     updategroupandchildrenatomslabels!(input, state, model)
 
-    updatemotherprocesses!(state, model)
+    updatemotherprocesses!(state, model, fkthreshold)
 
-    updatechildprocesses!(input, state, model)
+    updatechildprocesses!(input, state, model, fkthreshold)
 
     updatewgroupcluslabels!(input, state, model)
 

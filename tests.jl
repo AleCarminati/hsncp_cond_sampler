@@ -53,7 +53,7 @@ end
 function checkmothercluscount(state::MCMCState)
   # Check if the saved counters are correct. This is done only for the mother
   # processes that are connected to at least one group.
-  for m in findall(StatsBase.counts(state.groupcluslabels) .> 0)
+  for m in findall(StatsBase.counts(state.groupcluslabels, 2) .> 0)
     maxlabel = maximum(
       map(
         x -> maximum(state.childrenatomslabels[x]),
@@ -95,7 +95,7 @@ function checkmotheratomcontainerlength(state::MCMCState)
   # Check if the number of allocated atoms in the mother process is equal to
   # the maximum label. This is done only for the mother
   # processes that are connected to at least one group.
-  for m in findall(StatsBase.counts(state.groupcluslabels) .> 0)
+  for m in findall(StatsBase.counts(state.groupcluslabels, 2) .> 0)
     maxlabel = maximum(
       map(
         x -> maximum(state.childrenatomslabels[x]),
@@ -260,7 +260,7 @@ end
   state = MCMCState(input.g, input.n, model.nmotherprocesses)
 
   @testset "Initalization" begin
-    initalizemcmcstate!(input, state, model)
+    initializemcmcstate!(input, state, model)
 
     teststate(state)
   end
@@ -272,13 +272,13 @@ end
   end
 
   @testset "Update mother process" begin
-    updatemotherprocesses!(state, model)
+    updatemotherprocesses!(state, model, 0.01)
 
     teststate(state)
   end
 
   @testset "Update child process" begin
-    updatechildprocesses!(input, state, model)
+    updatechildprocesses!(input, state, model, 0.01)
 
     teststate(state)
   end
