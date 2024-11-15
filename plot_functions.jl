@@ -214,12 +214,7 @@ function plotdensitypredictions(
   savefig(plot(plots...; plotargs...), filename)
 end
 
-function atomsvalues(
-  atomsvector,
-  model::GammaCRMModel;
-  value = "jump",
-  iterations = nothing,
-)
+function atomsvalues(atomsvector; value = "jump", iterations = nothing)
   #= Helper function that, given a vector of AtomsContainer, returns, for each
     atom, a vector containing its values. If the atom is not allocated in that
     a certain iteration, it returns the "missing" value. =#
