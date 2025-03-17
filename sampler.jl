@@ -3,7 +3,7 @@
 
 function getatomcenterednormals(
   state::MCMCState,
-  model::GammaCRMModel;
+  model::Model;
   group = nothing,
   motherprocess = nothing,
 )
@@ -92,7 +92,7 @@ end
 
 function getprocessmeans(
   state::MCMCState,
-  model::GammaCRMModel;
+  model::Model;
   group = nothing,
   motherprocess = nothing,
   onlyalloc = true,
@@ -100,10 +100,7 @@ function getprocessmeans(
   #= Function that returns a vector containing the means that are saved in the
     atoms of the mother (group = nothing) or the child (group = l) process.
     If onlyalloc = true, it returns a vector containing the means that are
-    saved only in the allocated atoms.
-    Note that this function only makes sense within the GammaCRMModel,
-    therefore we use as input also this model to avoid using this function
-    with other models. =#
+    saved only in the allocated atoms. =#
   if group == nothing
     means = map(x -> x[1], state.motherallocatedatoms[motherprocess].locations)
     if !onlyalloc
@@ -138,11 +135,7 @@ function getmixtvar(state::MCMCState, model::NormalMeanVarVarModel)
   return state.mixtparams[1]
 end
 
-function initializemcmcstate!(
-  input::MCMCInput,
-  state::MCMCState,
-  model::GammaCRMModel,
-)
+function initializemcmcstate!(input::MCMCInput, state::MCMCState, model::Model)
   state.mixtparams = samplepriormixtparams(model)
 
   # The number of atoms to sample for each mother process and for each child
@@ -323,7 +316,7 @@ function updatemotherprocessesalloc!(
   g = size(state.wgroupcluslabels)[1]
 
   # First, sample the jumps.
-  updatemotherprocessesallocjumps!(state, model)
+  updatemotherprocessesallocjumps!(state, model, model.motherprocess)
 
   # Then, sample the locations.
   updatemotherprocessesallocmeans!(state, model)
@@ -332,7 +325,8 @@ end
 
 function updatemotherprocessesallocjumps!(
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
+  process::GammaProcess,
 )
   # Samples the jumps for the allocated atoms of the mother processes.
   for m in findall(
@@ -340,25 +334,44 @@ function updatemotherprocessesallocjumps!(
   )
     shape = state.motherallocatedatoms[m].counter
     rate =
-      1 +
-      model.childrentotalmass *
-      sum(@. log(1 + state.auxu[state.groupcluslabels==m]))
-    # The rate is equal for all the Gamma distributions, therefore transform it
-    # from a scalar to a vector with the same values.
-    rate = fill(rate, size(shape)[1])
+      1 + sum(
+        laplaceexp.(
+          [model.childrenprocess],
+          state.auxu[state.groupcluslabels.==m],
+        ),
+      )
 
     # We write the inverse of the second parameter because the Gamma() function
     # requires the shape and the scale.
-    gammas = @. Gamma(shape, 1 / rate)
+    gammas = Gamma.(shape, 1 / rate)
 
     state.motherallocatedatoms[m].jumps[:] = rand.(gammas)
   end
 end
 
-function updatemotherprocessesallocmeans!(
+function updatemotherprocessesallocjumps!(
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
+  motherprocess::GeneralizedGammaProcess,
 )
+  # Samples the jumps for the allocated atoms of the mother processes.
+  for m in findall(
+    StatsBase.counts(state.groupcluslabels, 1:model.nmotherprocesses) .> 0,
+  )
+    shape = state.motherallocatedatoms[m].counter .- motherprocess.sigma
+    rate =
+      motherprocess.tau +
+      laplaceexp.([model.childprocess], state.auxu[state.groupcluslabels.==m])
+
+    # We write the inverse of the second parameter because the Gamma() function
+    # requires the shape and the scale.
+    gammas = Gamma.(shape, 1 / rate)
+
+    state.motherallocatedatoms[m].jumps[:] = rand.(gammas)
+  end
+end
+
+function updatemotherprocessesallocmeans!(state::MCMCState, model::Model)
   for m in findall(
     StatsBase.counts(state.groupcluslabels, 1:model.nmotherprocesses) .> 0,
   )
@@ -451,20 +464,18 @@ end
 
 function updatemotherprocessesnonalloc!(
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
   fkthreshold,
 )
   for m = 1:model.nmotherprocesses
     f =
-      x ->
-        model.mothertotalmass * gamma(
-          0,
-          x * (
-            1 +
-            model.childrentotalmass *
-            sum(@. log(1 + state.auxu[state.groupcluslabels==m]))
-          ),
-        )
+      x -> motherprocessfkfun(
+        x,
+        m,
+        model.motherprocess,
+        model.childrenprocess,
+        state,
+      )
 
     state.mothernonallocatedatoms[m].jumps = fergusonklass(f, fkthreshold)
 
@@ -476,6 +487,37 @@ function updatemotherprocessesnonalloc!(
     state.mothernonallocatedatoms[m].counter =
       zeros(size(state.mothernonallocatedatoms[m].jumps)[1])
   end
+end
+
+function motherprocessfkfun(
+  x,
+  m,
+  motherprocess::GammaProcess,
+  childprocess::Process,
+  state,
+)
+  return motherprocess.totalmass * gamma(
+    0,
+    x * (
+      1 +
+      sum(@. laplaceexp([childprocess], state.auxu[state.groupcluslabels==m]))
+    ),
+  )
+end
+
+function motherprocessfkfun(
+  x,
+  motherprocess::GeneralizedGammaProcess,
+  childprocess::Process,
+  state,
+)
+  return motherprocess.totalmass / gamma(1 - motherprocess.sigma) * expint(
+    1 + motherprocess.sigma,
+    x * (
+      motherprocess.tau +
+      sum(@. laplaceexp([childprocess], state.auxu[state.groupcluslabels==m]))
+    ),
+  ) / x^motherprocess.sigma
 end
 
 function updatechildprocesses!(
@@ -495,17 +537,10 @@ end
 function updatechildprocessalloc!(
   input::MCMCInput,
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
   l,
 )
-
-  # First, sample the jumps.
-  shape = state.childrenallocatedatoms[l].counter
-  rate = fill(1 + state.auxu[l], size(shape)[1])
-
-  gammas = @. Gamma(shape, 1 / rate)
-
-  state.childrenallocatedatoms[l].jumps[:] = rand.(gammas)
+  updatechildprocessesallocjumps!(state, model.childrenprocess, l)
 
   # Then, sample the locations.
   motheratommean = getprocessmeans(
@@ -549,13 +584,39 @@ function updatechildprocessalloc!(
   state.childrenallocatedatoms[l].locations[:] = rand.(normals, 1)
 end
 
+function updatechildprocessesallocjumps!(
+  state::MCMCState,
+  childprocess::GammaProcess,
+  l,
+)
+  shape = state.childrenallocatedatoms[l].counter
+  rate = 1 + state.auxu[l]
+
+  gammas = Gamma.(shape, 1 / rate)
+
+  state.childrenallocatedatoms[l].jumps[:] = rand.(gammas)
+end
+
+function updatechildprocessesallocjumps!(
+  state::MCMCState,
+  childprocess::GeneralizedGammaProcess,
+  l,
+)
+  shape = state.childrenallocatedatoms[l].counter .- childprocess.sigma
+  rate = childprocess.tau + state.auxu[l]
+
+  gammas = Gamma.(shape, 1 / rate)
+
+  state.childrenallocatedatoms[l].jumps[:] = rand.(gammas)
+end
+
 function updatechildprocessnonalloc!(
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
   l,
   fkthreshold,
 )
-  f = x -> model.childrentotalmass * gamma(0, x * (1 + state.auxu[l]))
+  f = x -> childprocessfkfun(x, l, model.childrenprocess, state)
 
   state.childrennonallocatedatoms[l].jumps = fergusonklass(f, fkthreshold)
 
@@ -583,10 +644,42 @@ function updatechildprocessnonalloc!(
     zeros(size(state.childrennonallocatedatoms[l].jumps)[1])
 end
 
+function childprocessfkfun(x, groupidx, childprocess::GammaProcess, state)
+  return childprocess.totalmass *
+         sum(
+           getalljumps(
+             state,
+             group = nothing,
+             motherprocess = state.groupcluslabels[groupidx],
+           ),
+         ) *
+         gamma(0, x * (1 + state.auxu[groupidx]))
+end
+
+function childprocessfkfun(
+  x,
+  groupidx,
+  childprocess::GeneralizedGammaProcess,
+  state,
+)
+  return childprocess.totalmass / gamma(1 - childprocess.sigma) *
+         sum(
+           getalljumps(
+             state,
+             group = nothing,
+             motherprocess = state.groupcluslabels[groupidx],
+           ),
+         ) *
+         expint(
+           1 + childprocess.sigma,
+           x * (childprocess.tau + state.auxu[groupidx]),
+         ) / x^childprocess.sigma
+end
+
 function updategroupandchildrenatomslabels!(
   input::MCMCInput,
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
 )
   # Updates both the groupcluslabels and the childrenatomslabels.
   g = size(state.auxu)[1]
@@ -686,7 +779,7 @@ end
 function updatesingleatomlabel!(
   input::MCMCInput,
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
   jumps,
   normals,
   nalloc,
@@ -830,7 +923,7 @@ end
 function updatewgroupcluslabels!(
   input::MCMCInput,
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
 )
   for l = 1:input.g
     jumps = getalljumps(state, group = l)
@@ -879,7 +972,7 @@ end
 
 function updateprediction!(
   state::MCMCState,
-  model::GammaCRMModel,
+  model::Model,
   prediction,
   grid,
   idx::Integer,

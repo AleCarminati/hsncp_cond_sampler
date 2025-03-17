@@ -244,7 +244,7 @@ struct MCMCOutput
   # process.
   motherallocatedatoms::Vector{Vector{AtomsContainer}}
 
-  function MCMCOutput(iterations, g, n, model::GammaCRMModel)
+  function MCMCOutput(iterations, g, n, model::Model)
     new(
       zeros(iterations, 1),
       [zeros(iterations, n[l], 1) for l = 1:g],
