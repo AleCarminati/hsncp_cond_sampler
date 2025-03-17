@@ -24,11 +24,14 @@ truedens = [
 model = NormalMeanVarVarModel(
   mixtshape = 301,
   mixtscale = 0.5,
-  childrentotalmass = 1,
-  mothertotalmass = 1,
+  childrenprocess = GammaProcess(1),
+  motherprocess = GammaProcess(1),
+  motherlocmean = 0,
   motherlocsd = 6,
   motherlocshape = 6,
   motherlocscale = 0.5,
+  nmotherprocesses = 1,
+  dirparam = 1,
 )
 
 output, prediction = hsncpmixturemodel_fit(
@@ -49,7 +52,3 @@ R"library(salso)"
 R"bestclust = salso(clus)"
 
 @rget bestclust
-
-plotclustering(input, trueclust, bestclust, "clust.png")
-
-plotdensitypredictions(input, predictiongrid, truedens, prediction, "pred.png")

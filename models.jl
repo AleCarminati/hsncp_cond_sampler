@@ -1,6 +1,30 @@
 # This file contains all the models that can be used with the conditional
 # sampler.
 
+abstract type Process end
+
+function laplaceexp end
+# Return the Laplace exponent of the process in a certain point.
+
+@kwdef struct GammaProcess <: Process
+  totalmass::Float64
+end
+
+function laplaceexp(process::GammaProcess, x)
+  return process.totalmass * log(x + 1)
+end
+
+@kwdef struct GeneralizedGammaProcess <: Process
+  totalmass::Float64
+  sigma::Float64
+  tau::Float64
+end
+
+function laplaceexp(process::GeneralizedGammaProcess, x)
+  return process.totalmass / process.sigma *
+         ((x + process.tau)^process.sigma - process.tau^process.sigma)
+end
+
 abstract type Model end
 
 function samplepriormotherloc end
@@ -17,30 +41,26 @@ function samplepriorgroupclusprob end
 # Samples from the prior of the probability to have a certain group cluster
 # label.
 
-abstract type GammaCRMModel <: Model end
-
-@kwdef struct NormalMeanModel <: GammaCRMModel
+@kwdef struct NormalMeanModel <: Model
   #=
   		- Gaussian mixture components:
   			- fixed variance;
   			- random mean.
-  		- Child processes: Gamma CRM with fixed total mass, for the locations we
-        use a Gaussian kernel with fixed variance.
-  		- Mother process: Gamma CRM with fixed total mass, for the locations we
-        use a Gaussian with fixed variance.
+  		- Child processes: Gaussian kernel with fixed variance for the locations.
+  		- Mother process: Gaussian with fixed variance for the locations.
   	=#
 
   # Standard deviation of the Gaussian mixture components.
   mixturecompsd::Float64
 
-  # Total mass for the Gamma CRM of the child processes.
-  childrentotalmass::Float64
+  # Processes of the model.
+  childrenprocess::Process
+  motherprocess::Process
 
   # Standard deviation of the Gaussian kernel.
   kernelsd::Float64
 
-  # Hyperparameters for the Gamma CRM of the mother process.
-  mothertotalmass::Float64
+  # Hyperparameters for the the mother process location.
   motherlocmean::Float64
   motherlocsd::Float64
 
@@ -67,31 +87,29 @@ function samplepriormixtparams(model::NormalMeanModel)
   return []
 end
 
-function samplepriorprobgroupclus(model::GammaCRMModel)
+function samplepriorprobgroupclus(model::Model)
   return rand(Dirichlet(model.nmotherprocesses, model.dirparam))
 end
 
-@kwdef struct NormalMeanVarModel <: GammaCRMModel
+@kwdef struct NormalMeanVarModel <: Model
   #=
       - Gaussian mixture components:
         - fixed variance;
         - random mean.
-      - Child processes: Gamma CRM with fixed total mass, for the locations we
-        use a Gaussian kernel with variance given by the second element of the
-        mother process atom's location.
-      - Mother process: Gamma CRM with fixed total mass, for the locations we
-        use a Gaussian with fixed variance and an inverse gamma with fixed shape
-        and scale.
+      - Child processes: for the locations, Gaussian kernel with variance given
+        by the second element of the mother process atom's location.
+      - Mother process: for the locations, Gaussian with fixed variance and
+        inverse gamma with fixed shape and scale.
     =#
 
   # Standard deviation of the Gaussian mixture components.
   mixturecompsd::Float64
 
-  # Total mass for the Gamma CRM of the child processes.
-  childrentotalmass::Float64
+  # Processes of the model.
+  childrenprocess::Process
+  motherprocess::Process
 
-  # Hyperparameters for the Gamma CRM of the mother process.
-  mothertotalmass::Float64
+  # Hyperparameters for the the mother process location.
   motherlocmean::Float64
   motherlocsd::Float64
   motherlocshape::Float64
@@ -113,17 +131,15 @@ function samplepriormixtparams(model::NormalMeanVarModel)
   return []
 end
 
-@kwdef struct NormalMeanVarVarModel <: GammaCRMModel
+@kwdef struct NormalMeanVarVarModel <: Model
   #=
       - Gaussian mixture components:
         - variance with a inverse gamma prior;
         - random mean.
-      - Child processes: Gamma CRM with fixed total mass, for the locations we
-        use a Gaussian kernel with variance given by the second element of the
-        mother process atom's location.
-      - Mother process: Gamma CRM with fixed total mass, for the locations we
-        use a Gaussian with fixed variance and an inverse gamma with fixed shape
-        and scale.
+      - Child processes: for the locations, Gaussian kernel with variance given
+        by the second element of the mother process atom's location.
+      - Mother process: for the locations, Gaussian with fixed variance and an
+        inverse gamma with fixed shape and scale.
     =#
 
   # Hyperparameters for the Inverse Gamma prior for the variance of the mixture
@@ -131,11 +147,11 @@ end
   mixtshape::Float64
   mixtscale::Float64
 
-  # Total mass for the Gamma CRM of the child processes.
-  childrentotalmass::Float64
+  # Processes of the model.
+  childrenprocess::Process
+  motherprocess::Process
 
-  # Hyperparameters for the Gamma CRM of the mother process.
-  mothertotalmass::Float64
+  # Hyperparameters for the the mother process location.
   motherlocmean::Float64
   motherlocsd::Float64
   motherlocshape::Float64
