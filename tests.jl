@@ -249,8 +249,8 @@ end
   model = NormalMeanVarVarModel(
     mixtshape = 5,
     mixtscale = 5,
-    childrentotalmass = 1,
-    mothertotalmass = 1,
+    childrenprocess = GammaProcess(1),
+    motherprocess = GammaProcess(1),
     motherlocmean = 0,
     motherlocsd = 6,
     motherlocshape = 5,
