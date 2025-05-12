@@ -183,9 +183,9 @@ function initializemcmcstate!(input::MCMCInput, state::MCMCState, model::Model)
     childfreq = StatsBase.counts(tempchildlabels, 1:childnatoms)
 
     # Extract the indexes of the atoms that have not been allocated.
-    nonallocatomsidx = (1:childnatoms)[childfreq.==0]
+    nonallocatomsidx = (1:childnatoms)[childfreq .== 0]
     # Extract the indexes of the atoms that have been allocated.
-    allocatomsidx = (1:childnatoms)[childfreq.!=0]
+    allocatomsidx = (1:childnatoms)[childfreq .!= 0]
     #= Function that transforms the sampled labels (from 1 to childnatoms) in
       the correct within-group cluster labels (from 1 to the number of allocated
       atoms of the child process). =#
@@ -226,9 +226,9 @@ function initializemcmcstate!(input::MCMCInput, state::MCMCState, model::Model)
   for m = 1:model.nmotherprocesses
     # Extract the indexes of the mother process' atoms that have not been
     # allocated.
-    mothernonallocatomsidx = (1:mothernatoms)[motherfreq[m].==0]
+    mothernonallocatomsidx = (1:mothernatoms)[motherfreq[m] .== 0]
     # Extract the indexes of the mother process' atoms that have been allocated.
-    motherallocatomsidx = (1:mothernatoms)[motherfreq[m].!=0]
+    motherallocatomsidx = (1:mothernatoms)[motherfreq[m] .!= 0]
 
     #= Function that transforms the sampled labels (from 1 to mothernatoms) in
       the correct cluster labels for the child processes' atoms (from 1 to the
@@ -337,7 +337,7 @@ function updatemotherprocessesallocjumps!(
       1 + sum(
         laplaceexp.(
           [model.childrenprocess],
-          state.auxu[state.groupcluslabels.==m],
+          state.auxu[state.groupcluslabels .== m],
         ),
       )
 
@@ -360,8 +360,10 @@ function updatemotherprocessesallocjumps!(
   )
     shape = state.motherallocatedatoms[m].counter .- motherprocess.sigma
     rate =
-      motherprocess.tau +
-      laplaceexp.([model.childprocess], state.auxu[state.groupcluslabels.==m])
+      motherprocess.tau + laplaceexp.(
+        [model.childrenprocess],
+        state.auxu[state.groupcluslabels .== m],
+      )
 
     # We write the inverse of the second parameter because the Gamma() function
     # requires the shape and the scale.
@@ -691,7 +693,7 @@ function updategroupandchildrenatomslabels!(
       m -> sum(
         map(
           phi -> logsumexp(
-            log.(getalljumps(state, group = nothing, motherprocess = m),) +
+            log.(getalljumps(state, group = nothing, motherprocess = m)) +
             logpdf.(
               getatomcenterednormals(
                 state,
@@ -1017,7 +1019,7 @@ function updateprediction!(
             group = nothing,
             motherprocess = m,
             onlyalloc = false,
-          ) + fill(getmixtvar(state, model), size(jumpstemp)[1])
+          ) + fill(getmixtvar(state, model), size(jumpstemp)[1]),
         ),
       ),
     )
