@@ -360,9 +360,11 @@ function updatemotherprocessesallocjumps!(
   )
     shape = state.motherallocatedatoms[m].counter .- motherprocess.sigma
     rate =
-      motherprocess.tau .+ laplaceexp.(
-        [model.childrenprocess],
-        state.auxu[state.groupcluslabels .== m],
+      motherprocess.tau + sum(
+        laplaceexp.(
+          [model.childrenprocess],
+          state.auxu[state.groupcluslabels .== m],
+        ),
       )
 
     # We write the inverse of the second parameter because the Gamma() function
@@ -509,6 +511,7 @@ end
 
 function motherprocessfkfun(
   x,
+  m,
   motherprocess::GeneralizedGammaProcess,
   childprocess::Process,
   state,
