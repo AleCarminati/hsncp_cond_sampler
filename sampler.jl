@@ -360,7 +360,7 @@ function updatemotherprocessesallocjumps!(
   )
     shape = state.motherallocatedatoms[m].counter .- motherprocess.sigma
     rate =
-      motherprocess.tau + laplaceexp.(
+      motherprocess.tau .+ laplaceexp.(
         [model.childrenprocess],
         state.auxu[state.groupcluslabels .== m],
       )
