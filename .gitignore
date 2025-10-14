@@ -1,5 +1,6 @@
 *.png
 /statprof/*
 *.csv
+!galaxy_labels.csv
 *.pdf
 *.jls
