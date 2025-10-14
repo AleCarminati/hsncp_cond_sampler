@@ -1,3 +1,5 @@
 *.png
 /statprof/*
 *.csv
+*.pdf
+*.jls

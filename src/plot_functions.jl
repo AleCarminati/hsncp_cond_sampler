@@ -51,7 +51,7 @@ function plotclustering(
   end
 
   yvalues = vcat(fill.(ticksvalues[1:input.g], n)...)
-  yvalues = vcat(yvalues, fill.(ticksvalues[input.g+1:2*input.g], n)...)
+  yvalues = vcat(yvalues, fill.(ticksvalues[(input.g+1):(2*input.g)], n)...)
 
   savefig(
     scatter(
