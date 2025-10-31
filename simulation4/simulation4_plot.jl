@@ -1,4 +1,4 @@
-include("import.jl")
+include("../src/import.jl")
 using CSV, DataFrames, Serialization
 
 ndatasets = 30

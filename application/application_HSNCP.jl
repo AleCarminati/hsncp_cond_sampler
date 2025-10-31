@@ -1,4 +1,4 @@
-include("import.jl")
+include("../src/import.jl")
 using Serialization, CSV, DataFrames
 
 # Set the seed for reproducibility of the experiments.

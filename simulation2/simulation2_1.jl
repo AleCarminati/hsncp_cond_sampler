@@ -1,4 +1,4 @@
-include("import.jl")
+include("../src/import.jl")
 using Serialization, Clustering
 
 # Set the seed for reproducibility of the experiments.

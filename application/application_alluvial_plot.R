@@ -37,4 +37,4 @@ p1 <- ggplot(df,
   )
 
 # save to PDF
-ggsave("plots/sloan_alluvial.png", p1, width = 6.4, height = 6.4*0.75)
+ggsave("sloan_alluvial.png", p1, width = 6.4, height = 6.4*0.75)

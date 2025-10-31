@@ -140,5 +140,5 @@ for ngroup in [50, 500]
   )
   heatmap!(psmHDP, color = :Blues, clim = (0, 1), colorbar = false, subplot = 4)
 
-  savefig("plots/simulation_1_$ngroup.pdf")
+  savefig("simulation_1_$ngroup.pdf")
 end

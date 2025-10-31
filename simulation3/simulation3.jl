@@ -1,4 +1,4 @@
-include("import.jl")
+include("../src/import.jl")
 using Serialization, StatsBase
 
 varsa = [16.26, 14.39, 12.21, 10.25, 8.607, 7.269, 6.181, 5.305]

@@ -1,4 +1,4 @@
-include("import.jl")
+include("../src/import.jl")
 using Serialization, Clustering, CSV, Tables
 
 varsa = [2.427, 1.726, 1.165, 3.501, 7.765]

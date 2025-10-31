@@ -1,4 +1,4 @@
-include("import.jl")
+include("../src/import.jl")
 using Serialization, CSV, DataFrames, KernelDensity
 
 df = CSV.read("galaxy_labels.csv", DataFrame, drop = [1])
@@ -51,7 +51,7 @@ end
 yval = vcat([repeat([i], length(data[i])) for i = 1:25]...)
 scatter!(flatdata, yval, color = bestclus, subplot = 2)
 
-savefig("plots/sloan_HSNCP.pdf")
+savefig("sloan_HSNCP.pdf")
 
 # --- HDP density and clustering plot ---
 
